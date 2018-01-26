@@ -1,5 +1,5 @@
 %% 定义电网中发电机的类
-classdef Generator
+classdef Generator < handle
 
 	properties
 
@@ -15,6 +15,11 @@ classdef Generator
 		mBase;			% 基准容量
 		status;			% 
 		votage;			% 电压设定值(若此节点转为PQ节点则该属性会改变)
+
+		% 暂态分析用
+		xd;
+		xd1;
+		xq;
 	end
 	properties (Dependent)
 		pqCount;
@@ -47,6 +52,10 @@ classdef Generator
 			for k = self.id
 				self.type(k) = nodes.type(self.nid(k) == nodes.id);
 			end
+
+			% self.xd = zeros(length(self.id), 1);
+			self.xd1 = gen(:,end);
+			% self.xq = zeros(length(self.id), 1);
 		end	
 
 		%% get.pqCount: 小型发电机数量

@@ -34,7 +34,7 @@ classdef Plain < handle
 			fprintf(file_t, '\n%s%d\n', '迭代次数: ',result.it);
 
 			fprintf(file_t, '\n%s\n', '节点电压,功率');
-			fprintf(file_t, '\n%s\n', ' id     电压      相角   发电机有功  发电机无功  负荷有功    负荷无功   泄漏有功  泄漏无功');
+			fprintf(file_t, '\n%s\n', ' id     电压      相角   发电机有功  发电机无功  负荷有功    负荷无功   补偿有功  补偿无功');
 			for k = 1:length(steadyState.nodes.id)
 				fprintf(file_t, '  %d',steadyState.nodes.id(k));
 				fprintf(file_t, '   %6.3f',steadyState.nodes.mag(k),steadyState.nodes.ang(k).*180./pi,steadyState.nodes.Pg(k).*100,steadyState.nodes.Qg(k).*100,steadyState.nodes.Pd(k).*100,steadyState.nodes.Qd(k).*100,steadyState.nodes.Pc(k).*100,steadyState.nodes.Qc(k).*100);

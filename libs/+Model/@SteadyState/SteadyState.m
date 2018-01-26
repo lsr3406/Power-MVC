@@ -277,10 +277,10 @@ classdef SteadyState < handle
 			self.nodes.mag = self.nodes.mag.*(1+dUpn);
 		end
 
-		%% getNodePowerGeneration: 计算各节点的实际发电量 (仅计算了 pv 节点的无功和平衡节点的有功无功)
-		function getNodePowerGeneration(self)
+		%% getGeneratorPower: 计算各节点的实际发电量 (仅计算了 pv 节点的无功和平衡节点的有功无功)
+		function getGeneratorPower(self)
 			self.nodes.Pg(self.refIndex) = self.nodes.Pout(self.refIndex) + self.nodes.Pd(self.refIndex);
-			self.nodes.Qg([self.pvIndex; self.refIndex]) = self.nodes.Pout([self.pvIndex; self.refIndex]) + self.nodes.Pd([self.pvIndex; self.refIndex]);
+			self.nodes.Qg([self.pvIndex; self.refIndex]) = self.nodes.Qout([self.pvIndex; self.refIndex]) + self.nodes.Qd([self.pvIndex; self.refIndex]);
 		end
 
 		%% getLinePower: 计算普通线路的潮流
@@ -381,9 +381,68 @@ classdef SteadyState < handle
 			if(result.status ~= 1)
 				return;
 			end
+			self.getGeneratorPower();
 			self.getBranchPower(branches);
 			self.getConpensatorPower(nodes);
 		end
+
+		%% addGenImpedanceToNodes: 将发电机的暂态电抗加至各节点, 为计算暂态参数做准备
+		function addGenImpedanceToNodes(self, nodes, generator)
+			for k = 1:length(generator.id)
+				nid = generator.nid(k);
+				index = find(nodes.id == nid);
+				nodes.b(index) = nodes.b(index) - 1./generator.xd1(k);
+			end
+		end
+
+		%% addLoadImpedanceToNodes: 将负荷的电抗加至节点, 为计算暂态参数做准备
+		function [outputs] = addLoadImpedanceToNodes(self, nodes)
+			nodes.g = nodes.g + self.nodes.Pd;
+			nodes.b = nodes.b - self.nodes.Qd;
+		end
+
+		%% getShortCircultCapacity: 计算单个节点的短路容量
+		function [result] = getShortCircultCapacity(self, nodes, generator, branches, id)
+			
+			% 1. 根据发电机信息, 修改所有节点的接地参数;
+			self.addLoadImpedanceToNodes(nodes);
+			self.addGenImpedanceToNodes(nodes, generator);
+			% 2. 生成节点导纳矩阵;
+			self.NAMInit(nodes, branches);
+			% 3. 解方程 Yz = ek;
+			k = find(nodes.id == id);
+			ek = zeros(length(self.nodes.id), 1);
+			ek(k) = 1;
+			z = self.NAM \ ek;
+			% 4. 计算短路容量, S = 1/zk, S = 1.732*Un/zk
+			result.scc = 1./z(k);
+			result.z = z;
+		end
+
+		%% getShortCircultCapacity: 计算所有节点的短路容量
+		function [result] = getAllShortCircultCapacity(self, nodes, generator, branches)
+			
+			% 1. 根据发电机信息, 修改所有节点的接地参数;
+			% self.addLoadImpedanceToNodes(nodes);
+			self.addGenImpedanceToNodes(nodes, generator);
+			% 2. 生成节点导纳矩阵;
+			self.NAMInit(nodes, branches);
+			% 3. 求逆;
+			Z = inv(self.NAM);
+			% 4. 计算短路容量, S = 1/zk, S = 1.732*Un/zk
+			result.scc = 1./diag(Z);
+			result.Z = Z;
+		end
+
+		%% solveShortCircult: 短路计算
+		function [result] = solveShortCircult(self, nodes, branches)
+			% TODO solveShortCircult()
+			% 1. 根据发电机信息, 修改所有节点的接地参数
+			% 2. 生成节点导纳矩阵, 求逆得到节点阻抗矩阵(不当做属性存储)
+			% 3. 根据叠加定理, 短路点置单位标么电压, 根据
+			result = [];
+		end
+
 		
 	end
 end

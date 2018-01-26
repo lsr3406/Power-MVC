@@ -1,5 +1,5 @@
 %% 定义电网中线路及变压器的类
-classdef Branches
+classdef Branches < handle
 
 	properties
 

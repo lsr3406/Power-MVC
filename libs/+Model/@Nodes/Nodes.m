@@ -1,12 +1,12 @@
 %% 定义电网中节点的类
-classdef Nodes
+classdef Nodes < handle
 
 	properties
 
 		id;				%　节点编号
 		type;			% 节点类型	1PQ	2PV	3平衡
-		g;	% 分流电导(MW)
-		b;	% 分流电纳(MVar)
+		g;	% 分流电导(MW)(或导纳标么值)
+		b;	% 分流电纳(MVar)(或导纳标么值)
 		mag0;			% 起始电压
 		ang0;			% 起始相角
 		mag;			% 电压
