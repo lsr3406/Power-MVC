@@ -1,6 +1,6 @@
 %% getAdmittanceMatrix: 根据已知线路参数及节点参数计算节点导纳矩阵
 % TODO 修改生成方法
-function [AdmittanceMatrix] = getAdmittanceMatrix(nodeData,lineData,ss)
+function [AdmittanceMatrix] = getAdmittanceMatrix(nodeData,lineData, ss)
 
 	% 任务: 根据已知信息求解得到系统的节点导纳矩阵.
 	% 注: 本程序未考虑三绕组变压器

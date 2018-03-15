@@ -80,20 +80,9 @@ classdef Branches < handle
 			self.status = branch(:,11);
 			self.angmin = branch(:,12);
 			self.angmax = branch(:,13);
-
-			% self.Pij = zeros(1,length(self.id));
-			% self.Pji = zeros(1,length(self.id));
-			% self.Qij = zeros(1,length(self.id));
-			% self.Qji = zeros(1,length(self.id));
-			% self.dP = zeros(1,length(self.id));
-			% self.dQ = zeros(1,length(self.id));
 		end
 
-		%% getLineData: 生成线路参数,包括线路和变压器
-		function [lineData] = getLineData(self)
-			% 起始节点	终止节点	线路电阻	线路电抗	线路对地电导	线路对地电纳	变比
-			lineData = [self.fid,self.tid,self.r,self.x,self.g,self.b,self.ratio,self.angle];
-		end
+
 
 		%% changeLineParameter: 按比例改变线路参数
 		function [self] = changeLineParameter(self,rr,rx,rb)

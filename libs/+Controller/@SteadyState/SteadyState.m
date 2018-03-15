@@ -5,50 +5,46 @@ classdef SteadyState < handle
 	end
 	methods		
 
-		%% test: TODO test description
-		function testPF(self, config)
+		%% testPF: 潮流程序测试
+		function testPF(self)
 
+			% 获取原始数据
 			mpc = getmpc();
 
+			% 建立电力网稳态模型并初始化
 			steadyState = Model.SteadyState();
-			nodes = Model.Nodes(sortrows(mpc.bus),mpc.baseMVA);
-			generator = Model.Generator(mpc.gen,nodes);
-			branches = Model.Branches(mpc.branch);
-			steadyState.init(mpc, nodes, generator, branches);
+			steadyState.init(mpc);
 
-			solverConfig.method = 'NR';
-			solverConfig.maxIteration = 50;
-			solverConfig.epsilon = 1e-5;
-			solverConfig.start = 'default';
-			solverConfig.documentName = 'reportNR.txt';
+			%% 设置求解器的基本信息
+			solverConfig.method = 'NR';	% 求解方法
+			solverConfig.maxIteration = 50;	% 最大迭代
+			solverConfig.epsilon = 1e-5;	% 收敛判据, 功率不平衡量标幺
+			solverConfig.start = 'default';	% 启动方式, default 为按发电机端电压起动
+			solverConfig.documentName = 'reportNR.txt';	% 文本计算报告
 
-			result = steadyState.solvePowerFlow(nodes, generator, branches, solverConfig);
+			%% 求解
+			result = steadyState.solvePowerFlow(solverConfig);
 
+			%% 建立视图对象并生成计算报告, 这里以文本文件作为输出结果
 			viewModel = View.Plain();
-			viewModel.getPowerFlowReport(steadyState, nodes, generator, branches, solverConfig, result);
+			viewModel.getPowerFlowReport(steadyState, solverConfig, result);
 
-			save('test.mat');
+			% save('test.mat');	% 留作测试
 		end
 
-		%% test: TODO test description
-		function testSC(self, config)
+		%% testSC: 短路容量计算测试
+		% function testSC(self, config)
 
-			mpc = getmpc();
+		% 	mpc = getmpc();
 
-			steadyState = Model.SteadyState();
-			nodes = Model.Nodes(sortrows(mpc.bus),mpc.baseMVA);
-			generator = Model.Generator(mpc.gen,nodes);
-			branches = Model.Branches(mpc.branch);
-			steadyState.init(mpc, nodes, generator, branches);
+		% 	steadyState = Model.SteadyState();
+		% 	steadyState.init(mpc);
 
-			% result = steadyState.getShortCircultCapacity(nodes, generator, branches, 1);
-			result = steadyState.getAllShortCircultCapacity(nodes, generator, branches);
+		% 	% result = steadyState.getShortCircultCapacity(nodes, generator, branches, 1);
+		% 	result = steadyState.getAllShortCircultCapacity();
 
-			% viewModel = View.Plain();
-			% viewModel.getPowerFlowReport(steadyState, nodes, generator, branches, solverConfig, result);
-
-			save('test.mat');
-		end
+		% 	save('test.mat');
+		% end
 
 	end
 end

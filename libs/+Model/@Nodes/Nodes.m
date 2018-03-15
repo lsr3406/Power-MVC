@@ -109,116 +109,13 @@ classdef Nodes < handle
 			self.mag0 = bus(:,8);
 			self.ang0 = bus(:,9).*pi./180;
 			self.zone = bus(:,11);
-			% self.Vmax = bus(:,12);
-			% self.Vmin = bus(:,13);
 
-			% self.Qmin = zeros(length(self.id),1);
-			% self.Qmax = zeros(length(self.id),1);
 			if(self.refCount ~= 1)
 				die('平衡节点数量不为 1');
 			end
 		end
 
 		% 在方法的定义中需要将对象本身当做第一个参数传入,在调用时不需要传入
-		%% getNodeData: 生成节点参数,主要是带有独立导纳设备的节点参数
-		% 这里将节点上的并联电容视为恒阻抗模型,并将其归算至节点导纳矩阵
-		function [nodeData] = getNodeData(self)
-
-			nodeData = [self.id,self.g,self.b];
-		end
-
-		%% generateAdmittanceMatrix: 生成节点导纳矩阵
-		% 调用时参数只传支路对象
-		function [AM] = generateAdmittanceMatrix(self,branches)
-			lineData = branches.getLineData();
-			nodeData = self.getNodeData();
-			AM = self.getMatrix(nodeData,lineData);
-		end
-
-		%% getIterationInitialValue: 获取迭代初始值(考虑对节点的设置及发电机的设置)
-		function [self] = getIterationInitialValue(self,generator)
-
-			if 0
-				for k = generator.id
-					index = find(self.id == generator.nid(k));
-					self.mag0(index) = generator.votage(k);
-				end
-			end
-
-			self.mag = self.mag0;
-			self.ang = self.ang0;
-
-			% 0-1 启动
-			if 0
-				self.mag = ones(length(self.id),1);
-				self.ang = zeros(length(self.id),1);
-			end
-			self.iterationData_mag = [];
-			self.iterationData_ang = [];
-			self.iterationData_dq = [];
-			self.iterationData_dp = [];
-		end
-
-		%% getPlan: 初始化,用于计算各节点功率计划值,并根据发电机的情况计算出该节点可发出的的最大无功功率
-		function [self] = getPlan(self,generator)
-
-			self.Pg = zeros(length(self.id),1);
-			self.Qg = zeros(length(self.id),1);
-
-			for k = generator.id
-				index = find(self.id == generator.nid(k));
-
-				% 这里对各节点的功率计划的赋值有一大部分(PQ节点)是没有意义的
-				self.Pg(index) = self.Pg(index) + generator.Pg(k);
-				self.Qg(index) = self.Qg(index) + generator.Qg(k);
-
-				self.Qmin(index) = self.Qmin(index) + generator.Qmin(k);
-				self.Qmax(index) = self.Qmax(index) + generator.Qmax(k);
-			end
-			% self.Pis = self.Pg - self.Pd;
-			% self.Qis = self.Qg - self.Qd;
-		end
-
-		%% updatePlan: 更新各节点功率计划值. 4 月 7 日修复 bug
-		function [self] = updatePlan(self)
-			self.Pis = self.Pg - self.Pd;
-			self.Qis = self.Qg - self.Qd;
-		end
-
-		%% getPowerOutflow: 计算从 id 节点注入电网的潮流
-		function [Pf,Qf] = getPowerOutflow(self,id)
-			Pf = zeros(length(id),1);
-			Qf = zeros(length(id),1);
-			for k = 1:length(id)
-				index_t = find(self.id == id(k));
-				Sf = conj(self.AdmittanceMatrix(index_t,:))*(self.mag.*exp(i.*(self.ang(index_t)-self.ang))).*self.mag(index_t);
-				Pf(k) = real(Sf);
-				Qf(k) = imag(Sf);
-			end
-		end
-
-		%% getPowerUnbalance: 计算功率不平衡量,仅用于牛拉法和PQ分解法计算,返回变量均涵盖所有节点并已分类
-		function [outflowP,outflowQ,deltaP,deltaQ] = getPowerUnbalance(self)
-
-			[outflowP,outflowQ] = self.getPowerOutflow(self.id);
-			deltaP = self.Pis - outflowP;
-			deltaQ = self.Qis - outflowQ;
-		end
-
-		%% getConpensatorPower: 计算无功补偿器电量
-		function [Pc,Qc] = getConpensatorPower(self)
-			Pc = self.mag.^2.*self.g;
-			Qc = self.mag.^2.*self.b;
-		end
-
-		%% getIterationData: 每次使用潮流方程之后调用此方法获取迭代信息
-		function [self] = getIterationData(self,dp,dq)
-
-			self.iterationData_mag = [self.iterationData_mag,self.mag];
-			self.iterationData_ang = [self.iterationData_ang,self.ang];
-			self.iterationData_dp = [self.iterationData_dp,dp];
-			self.iterationData_dq = [self.iterationData_dq,dq];
-		end
 
 		%% changeLoadCapacity: 改变所有负荷的容量
 		function [self] = changeLoadCapacity(self,rate)

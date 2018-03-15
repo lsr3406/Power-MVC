@@ -28,12 +28,13 @@ classdef Start < handle
 
 		%% run: 入口方法
 		function run(self, config)
-			% path;
+
 			self.config = config;
 			self.controller = config.controller;
 			self.method = config.method;
-			eval(['obj = Controller.', self.controller, '();']);
-			eval(['obj.', self.method, '();']);
+
+			eval(['obj = Controller.', self.controller, '()']);
+			eval(['obj.', self.method, '()']);
 		end
 
 	end
