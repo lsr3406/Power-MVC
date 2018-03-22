@@ -14,7 +14,7 @@ classdef SteadyState < handle
 		FDM2;		% 快速分解法修正方程第二系数矩阵
 		%% 雅可比矩阵在求解过程中一直改变, 不直接当做属性存储
 
-		itlog;		% 和电力系统求解相关的记录
+		itlog;		% 和电力系统潮流求解相关的记录
 	end
 	properties (Dependent)
 		pqIndex;		% pq 节点索引
@@ -100,12 +100,10 @@ classdef SteadyState < handle
 			transformerCount = sum(self.branches.ratio~=0);
 		end
 
-
-
 		%% init: 电力系统稳态模型初始化
 		function init(self, mpc)
 
-			% sortrows(mpc.bus)
+			sortrows(mpc.bus);
 			self.mBase = mpc.baseMVA;
 			self.nodes.id = mpc.bus(:, 1);
 			nodesLength = length(self.nodes.id);
@@ -172,6 +170,10 @@ classdef SteadyState < handle
 			self.itlog.ang = [];
 			self.itlog.dP = [];
 			self.itlog.dQ = [];
+
+			% Mar 21 2018	设立节点电压 x, y分量, 用于机网转换
+			self.nodes.Ux = zeros(nodesLength, 1);
+			self.nodes.Uy = zeros(nodesLength, 1);
 		end
 
 		%% getNodeData: 生成节点参数,主要是带有独立导纳设备的节点参数
@@ -184,7 +186,6 @@ classdef SteadyState < handle
 			% 起始节点	终止节点	线路电阻	线路电抗	线路对地电导	线路对地电纳	变比
 			lineData = [self.branches.fid,self.branches.tid,self.branches.r,self.branches.x,self.branches.g,self.branches.b,self.branches.ratio,self.branches.angle];
 		end
-
 
 		%% NAMInit: 计算节点导纳矩阵, 结果存放于电力网相应属性中
 		% @return void
@@ -228,10 +229,10 @@ classdef SteadyState < handle
 			self.nodes.Qis = self.nodes.Qg - self.nodes.Qd;
 		end
 
-		%% getPowerOutflow: 计算从 nid 节点注入电网的潮流, 结果存放于 nodes 字段相应属性中
+		%% setPowerOutflow: 计算从 nid 节点注入电网的潮流, 结果存放于 nodes 字段相应属性中
 		% @param  int32   nid   节点 id
 		% @return void
-		function getPowerOutflow(self,nid)
+		function setPowerOutflow(self,nid)
 			for k = 1:length(nid)
 				index = find(self.nodes.id == nid(k));
 				% index
@@ -242,16 +243,16 @@ classdef SteadyState < handle
 			end
 		end
 
-		%% getPowerUnbalance: 计算功率不平衡量, 仅用于牛拉法和 PQ 分解法计算, 返回变量均涵盖所有节点并已分类, 结果存放于 nodes 字段相应属性中
+		%% setPowerUnbalance: 计算功率不平衡量, 仅用于牛拉法和 PQ 分解法计算, 返回变量均涵盖所有节点并已分类, 结果存放于 nodes 字段相应属性中
 		% @return void
-		function getPowerUnbalance(self)
+		function setPowerUnbalance(self)
 			self.nodes.dP = self.nodes.Pis - self.nodes.Pout;
 			self.nodes.dQ = self.nodes.Qis - self.nodes.Qout;
 		end
 
-		%% getIterationData: 每次使用潮流方程之后调用此方法获取迭代信息, 结果存放于 nodes 字段相应属性中
+		%% setIterationData: 每次使用潮流方程之后调用此方法获取迭代信息, 结果存放于 nodes 字段相应属性中
 		% @return void
-		function getIterationData(self)
+		function setIterationData(self)
 			% TODO 优化内存使用方式
 			self.itlog.mag = [self.itlog.mag, self.nodes.mag];
 			self.itlog.ang = [self.itlog.ang, self.nodes.ang];
@@ -323,11 +324,23 @@ classdef SteadyState < handle
 			jacobianMatrix = [Hij, Nij; Mij, Lij;];
 		end
 
-		%% getNewNodeParameter: 修正方程, 用于牛顿法
+		%% getFDM: 计算 PQ 分解法的系数矩阵
+		function getFDM(self, fdType)
+			switch fdType
+				case 'FD'
+					self.FDM1 = imag(self.NAM([self.pqIndex;self.pvIndex],[self.pqIndex;self.pvIndex]));
+					self.FDM2 = imag(self.NAM([self.pqIndex],[self.pqIndex]));
+				otherwise
+					throw('illegal fast duplicate type');
+			end
+		end
+		
+
+		%% getVotageAndAngleCorrection: 修正方程, 用于牛顿法
 		%　@param  n*n-double  jacobianMatrix   雅克比矩阵
 		% @return double      dTheta           相角修正量, 用于迭代方程
 		% @return double      dUpn             电压修正量标幺值, 用于迭代方程
-		function [dTheta,dUpn] = getVotageCorrection(self,jacobianMatrix)
+		function [dTheta,dUpn] = getVotageAndAngleCorrection(self, jacobianMatrix, standardFlag)
 
 			dP = self.nodes.dP([self.pqIndex; self.pvIndex]);
 			dQ = self.nodes.dQ([self.pqIndex]);
@@ -336,29 +349,56 @@ classdef SteadyState < handle
 
 			dTheta = dPara(1:(self.pqCount + self.pvCount));	% PQ 及 PV 节点相角的修正量
 			dUpn = dPara((self.pqCount + self.pvCount + 1):end);	% PQ 节点电压相对值的修正量
-			
-			% 将电压和相角误差规范化, 即填充至大向量中, 方便迭代方程直接使用
-			dUpn_t = zeros(self.pqCount + self.pvCount + self.refCount, 1);	% 初始化相角修正量
-			dUpn_t([self.pqIndex]) = dUpn;	% 代入 PQ 及 PV 节点相角的修正量
-			dUpn = dUpn_t;
-			dTheta_t = zeros(self.pqCount + self.pvCount + self.refCount, 1);
-			dTheta_t([self.pqIndex; self.pvIndex]) = dTheta;
-			dTheta = dTheta_t;
+
+			if nargin == 3 && standardFlag == true
+				% 将电压和相角误差规范化, 即填充至大向量中, 方便迭代方程直接使用
+				dUpn_t = zeros(self.pqCount + self.pvCount + self.refCount, 1);	% 初始化相角修正量
+				dUpn_t([self.pqIndex]) = dUpn;	% 代入 PQ 及 PV 节点相角的修正量
+				dUpn = dUpn_t;
+				dTheta_t = zeros(self.pqCount + self.pvCount + self.refCount, 1);
+				dTheta_t([self.pqIndex; self.pvIndex]) = dTheta;
+				dTheta = dTheta_t;
+			end
 		end
 
-		%% getNewVotage: 获取新的节点电压及相角, 用于牛顿法. 更新电力网 nodes 字段的属性 mag 和 ang
+		%% getMagCorrection: 计算电压修正量, 用于 PQ 分解法
+		function [dUpn] = getMagCorrection(self, standardFlag)
+			if nargin == 2 && standardFlag == true
+				dUpn = zeros(self.pqCount + self.pvCount + self.refCount, 1);
+				dUpn([self.pqIndex]) = self.FDM2 \ (self.nodes.dQ([self.pqIndex])./self.nodes.mag([self.pqIndex]));
+			else
+				dUpn = self.FDM2 \ (self.nodes.dQ([self.pqIndex])./self.nodes.mag([self.pqIndex]));
+			end
+		end
+
+		%% getAngCorrection: 计算相角修正量, 用于 PQ 分解法
+		function [dTheta] = getAngCorrection(self, standardFlag)
+			if nargin == 2 && standardFlag == true
+				dTheta = zeros(self.pqCount + self.pvCount + self.refCount, 1);
+				dTheta([self.pqIndex; self.pvIndex]) = (self.FDM1 \ (self.nodes.dP([self.pqIndex; self.pvIndex])./self.nodes.mag([self.pqIndex; self.pvIndex])))./self.nodes.mag([self.pqIndex; self.pvIndex]);
+			else
+				dTheta = (self.FDM1 \ (self.nodes.dP([self.pqIndex; self.pvIndex])./self.nodes.mag([self.pqIndex; self.pvIndex])))./self.nodes.mag([self.pqIndex; self.pvIndex]);
+			end
+		end
+
+		%% setNewVotage: 获取新的节点电压及相角, 用于牛顿法. 更新电力网 nodes 字段的属性 mag 和 ang
 		% @param  double dTheta    相角修正量, 来自修正方程
 		% @param  double dUpn      电压修正量标幺值, 来自修正方程
 		% @return void
-		function getNewVotage(self, dTheta, dUpn)
-			self.nodes.ang = self.nodes.ang + (dTheta);
-			self.nodes.mag = self.nodes.mag.*(1+dUpn);
+		function setNewVotage(self, dTheta, dUpn, standardFlag)
+			if nargin == 4 && standardFlag == true
+				self.nodes.ang = self.nodes.ang + (dTheta);
+				self.nodes.mag = self.nodes.mag.*(1+dUpn);
+			else
+				self.nodes.ang([self.pqIndex; self.pvIndex]) = self.nodes.ang([self.pqIndex; self.pvIndex]) + (dTheta);
+				self.nodes.mag([self.pqIndex]) = self.nodes.mag([self.pqIndex]).*(1+dUpn);
+			end
 		end
 
-		%% getGeneratorPower: 计算各节点的实际发电量 (仅计算了 pv 节点的无功和平衡节点的有功无功)
+		%% setGeneratorPower: 计算各节点的实际发电量 (仅计算了 pv 节点的无功和平衡节点的有功无功)
 		%  结果存放于电力网 node 字段的属性 Pg 和 Qg
 		% @return void
-		function getGeneratorPower(self)
+		function setGeneratorPower(self)
 			% 每个节点发电机发出的功率都等于当地需求和收敛时潮流方程计算的注入电网的功率的和
 			self.nodes.Pg(self.refIndex) = self.nodes.Pout(self.refIndex) + self.nodes.Pd(self.refIndex);
 			self.nodes.Qg([self.pvIndex; self.refIndex]) = self.nodes.Qout([self.pvIndex; self.refIndex]) + self.nodes.Qd([self.pvIndex; self.refIndex]);
@@ -406,10 +446,10 @@ classdef SteadyState < handle
 			dS = Sij + Sji;
 		end
 		
-		%% getBranchPower: 计算线路功率及功率损耗
+		%% setBranchPower: 计算线路功率及功率损耗
 		%  该方法在潮流迭代结束之后再使用, 用于求解收敛时电力网中各线路传输的功率, 求解完成后更新电力网 branches 字段的相应属性
 		% @return void
-		function getBranchPower(self)
+		function setBranchPower(self)
 			Sij = zeros(length(self.branches.id), 1);
 			Sji = zeros(length(self.branches.id), 1);
 			dS = zeros(length(self.branches.id), 1);
@@ -428,11 +468,18 @@ classdef SteadyState < handle
 			self.branches.dQ = imag(dS);
 		end
 
-		%% getConpensatorPower: 计算无功补偿器电量
+		%% setConpensatorPower: 计算无功补偿器电量
 		% @return void
-		function getConpensatorPower(self)
+		function setConpensatorPower(self)
 			self.nodes.Pc = self.nodes.mag.^2.*self.nodes.g;
 			self.nodes.Qc = self.nodes.mag.^2.*self.nodes.b;
+		end
+
+		%% setVotageRealAndImag: 将节点电压转化为直角坐标形式, 存储在 nodes.Ux, nodes.Uy 中
+		% @return void
+		function setVotageRealAndImag(self)
+			self.nodes.Ux = self.nodes.mag.*cos(self.nodes.ang);
+			self.nodes.Uy = self.nodes.mag.*sin(self.nodes.ang);
 		end
 
 		%% NRIteration: 牛顿法迭代程序核心部分
@@ -451,9 +498,9 @@ classdef SteadyState < handle
 
 			while 1
 				self.planUpdate();	% 确定各节点功率需求
-				self.getPowerOutflow(self.nodes.id);	% 潮流方程
-				self.getPowerUnbalance();	% 误差方程
-				self.getIterationData();	% 存储迭代信息,包括电压,相角,有功不平衡量,无功不平衡量
+				self.setPowerOutflow(self.nodes.id);	% 潮流方程
+				self.setPowerUnbalance();	% 误差方程
+				self.setIterationData();	% 存储迭代信息,包括电压,相角,有功不平衡量,无功不平衡量
 				
 				% 判收敛以及是否迭代次数上限, 返回一个状态码, 得到非零值直接返回
 				result.status = self.checkConverged(config, result.it);
@@ -462,23 +509,59 @@ classdef SteadyState < handle
 				end
 
 				J = self.getJacobian();	% ❀ 将各节点电压的初值代入修正方程,求解系数矩阵.
-				[dTheta, dUpn] = self.getVotageCorrection(J);	% 修正方程
-				self.getNewVotage(dTheta, dUpn);	% 迭代方程
+				[dTheta, dUpn] = self.getVotageAndAngleCorrection(J);	% 修正方程
+				self.setNewVotage(dTheta, dUpn);	% 迭代方程
 
 				result.it = result.it + 1;
 				% ❀ 运用各节点电压的新值进行下一步的迭代.
 			end
 		end
 
-		%% solvePowerFlow: 电力系统潮流计算 (写好后将其放至 Model 层)
+		%% PQIteration: PQ 分解法迭代程序核心部分
+		% @param    struct  config	        对迭代程序的基本设置
+		% --attr    string  method            求解方法, NR FD FDBX FDXB
+		% --attr    int32   maxIteration      最大迭代次数
+		% --attr    double  epsilon           收敛判据, 功率不平衡量标幺
+		% --attr    string  start             启动方式, default 为按发电机端电压起动
+		% --attr    string  documentName      如果是文本输出, 需设置文本计算报告 src
+		% @return   struct  result          迭代结果
+		% --attr    int32   status            错误码, 为 0 表示正常
+		% --attr    int32   it                迭代次数
+		function [result] = PQIteration(self, config)
+			% 计算 PQ 分解法的两个系数矩阵
+			self.getFDM(config.method);
+			% 从这里开始进入循环, 跳出循环的条件为迭代次数超过最大次数或潮流不平衡量的一范数小于给定值
+			result.it = 0;
+
+			while 1
+				self.planUpdate();	% 确定各节点功率需求
+				self.setPowerOutflow(self.nodes.id);	% 潮流方程
+				self.setPowerUnbalance();	% 误差方程
+				self.setIterationData();	% 存储迭代信息,包括电压,相角,有功不平衡量,无功不平衡量
+
+				% 判收敛以及是否迭代次数上限, 返回一个状态码, 得到非零值直接返回
+				result.status = self.checkConverged(config, result.it);
+				if(result.status ~= 0)	% result.status 非 0 表示收敛或错误
+					return;
+				end
+
+				dUpn = self.getMagCorrection();
+				dTheta = self.getAngCorrection();
+				self.setNewVotage(-dTheta, -dUpn);	% 迭代方程
+
+				result.it = result.it + 1;
+				% ❀ 运用各节点电压的新值进行下一步的迭代.
+			end
+		end
+		
+
+		%% solvePowerFlow: 电力系统潮流计算
 		function [result] = solvePowerFlow(self, config)
 
 			% ❀ 生成节点导纳矩阵.
 			self.NAMInit();
-
 			% ❀ 设置节点电压的初值(电压,相角).
 			self.votageInit(config);
-
 			% ❀ 将各节点电压的初值代入潮流方程,并求解有功无功不平衡量
 			self.planInit();	% 计算各节点功率的计划值
 
@@ -486,6 +569,8 @@ classdef SteadyState < handle
 			switch config.method
 				case 'NR'	% 牛顿法
 					result = self.NRIteration(config);
+				case 'FD'	% PQ 分解法
+					result = self.PQIteration(config);
 				otherwise
 					% TODO otherwise
 			end
@@ -495,58 +580,59 @@ classdef SteadyState < handle
 				return;
 			end
 			
-			self.getGeneratorPower();	% 根据迭代结果计算发电机功率, 结果记录到 nodes 属性中
-			self.getBranchPower();	% 根据迭代结果计算线路功率及损耗, 结果记录到 branches 属性中
-			self.getConpensatorPower();	% 根据迭代结果计算各节点对地电容功率, 结果记录到 nodes 属性中
+			self.setGeneratorPower();	% 根据迭代结果计算发电机功率, 结果记录到 nodes 属性中
+			self.setBranchPower();	% 根据迭代结果计算线路功率及损耗, 结果记录到 branches 属性中
+			self.setConpensatorPower();	% 根据迭代结果计算各节点对地电容功率, 结果记录到 nodes 属性中
+			self.setVotageRealAndImag();	% 若需要作后续暂态分析, 可以做这一步的电压转化
 		end
 
-		%% addGenImpedanceToNodes: 将发电机的暂态电抗加至各节点, 为计算暂态参数做准备
-		% function addGenImpedanceToNodes(self)
-		% 	for k = 1:length(self.generator.id)
-		% 		nid = self.generator.nid(k);
-		% 		index = find(self.nodes.id == nid);
-		% 		self.nodes.b(index) = self.nodes.b(index) - 1./self.generator.xd1(k);
-		% 	end
-		% end
+		% addGenImpedanceToNodes: 将发电机的暂态电抗加至各节点, 为计算暂态参数做准备
+		function addGenImpedanceToNodes(self)
+			for k = 1:length(self.generator.id)
+				nid = self.generator.nid(k);
+				index = find(self.nodes.id == nid);
+				self.nodes.b(index) = self.nodes.b(index) - 1./self.generator.xd1(k);
+			end
+		end
 
-		%% addLoadImpedanceToNodes: 将负荷的电抗加至节点, 为计算暂态参数做准备
-		% function [outputs] = addLoadImpedanceToNodes(self)
-		% 	self.nodes.g = self.nodes.g + self.nodes.Pd;
-		% 	self.nodes.b = self.nodes.b - self.nodes.Qd;
-		% end
+		% addLoadImpedanceToNodes: 将负荷的电抗加至节点, 为计算暂态参数做准备
+		function [outputs] = addLoadImpedanceToNodes(self)
+			self.nodes.g = self.nodes.g + self.nodes.Pd;
+			self.nodes.b = self.nodes.b - self.nodes.Qd;
+		end
 
-		%% getShortCircultCapacity: 计算单个节点的短路容量
-		% function [result] = getShortCircultCapacity(self, id)
+		% getShortCircultCapacity: 计算单个节点的短路容量
+		function [result] = getShortCircultCapacity(self, id)
 			
-		% 	% 1. 根据发电机信息, 修改所有节点的接地参数;
-		% 	self.addLoadImpedanceToNodes();
-		% 	self.addGenImpedanceToNodes();
-		% 	% 2. 生成节点导纳矩阵;
-		% 	self.NAMInit();
-		% 	% 3. 解方程 Yz = ek;
-		% 	k = find(self.nodes.id == id);
-		% 	ek = zeros(length(self.nodes.id), 1);
-		% 	ek(k) = 1;
-		% 	z = self.NAM \ ek;
-		% 	% 4. 计算短路容量, S = 1/zk, S = 1.732*Un/zk
-		% 	result.scc = 1./z(k);
-		% 	result.z = z;
-		% end
+			% 1. 根据发电机信息, 修改所有节点的接地参数;
+			self.addLoadImpedanceToNodes();
+			self.addGenImpedanceToNodes();
+			% 2. 生成节点导纳矩阵;
+			self.NAMInit();
+			% 3. 解方程 Yz = ek;
+			k = find(self.nodes.id == id);
+			ek = zeros(length(self.nodes.id), 1);
+			ek(k) = 1;
+			z = self.NAM \ ek;
+			% 4. 计算短路容量, S = 1/zk, S = 1.732*Un/zk
+			result.scc = 1./z(k);
+			result.z = z;
+		end
 
-		%% getShortCircultCapacity: 计算所有节点的短路容量
-		% function [result] = getAllShortCircultCapacity(self)
+		% getShortCircultCapacity: 计算所有节点的短路容量
+		function [result] = getAllShortCircultCapacity(self)
 			
-		% 	% 1. 根据发电机信息, 修改所有节点的接地参数;
-		% 	% self.addLoadImpedanceToNodes(nodes);
-		% 	self.addGenImpedanceToNodes();
-		% 	% 2. 生成节点导纳矩阵;
-		% 	self.NAMInit();
-		% 	% 3. 求逆;
-		% 	Z = inv(self.NAM);
-		% 	% 4. 计算短路容量, S = 1/zk, S = 1.732*Un/zk
-		% 	result.scc = 1./diag(Z);
-		% 	result.Z = Z;
-		% end
+			% 1. 根据发电机信息, 修改所有节点的接地参数;
+			% self.addLoadImpedanceToNodes(nodes);
+			self.addGenImpedanceToNodes();
+			% 2. 生成节点导纳矩阵;
+			self.NAMInit();
+			% 3. 求逆;
+			Z = inv(self.NAM);
+			% 4. 计算短路容量, S = 1/zk, S = 1.732*Un/zk
+			result.scc = 1./diag(Z);
+			result.Z = Z;
+		end
 
 	end
 end
