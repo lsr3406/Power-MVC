@@ -5,7 +5,7 @@
 % @return Z: π 型等效电路线路阻抗(阻抗)
 % @return Y1: π 型等效电路一次侧导纳(导纳)
 % @return Y2: π 型等效电路二次侧导纳(导纳)
-function [Z, Y1, Y2] = gamma2pi(Z,Y,K)
+function [Z, Y1, Y2] = gamma2pi(Z, Y, K)
 	Y1 = (1-K)./Z./K.^2 + Y./2;
 	Y2 = (K-1)./Z./K + Y./2;
 	Z = K.*Z;

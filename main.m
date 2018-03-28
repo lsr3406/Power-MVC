@@ -1,7 +1,7 @@
 % encoding: utf-8
 % @author: lsr3406
 % @create on: 2018-01-19 11:03:57
-% @update on: 2018-03-21 14:36:10
+% @update on: 2018-03-25 19:36:20
 
 % matlab 初始化
 clear all;		% 清除变量
@@ -13,8 +13,6 @@ addpath('./framework');
 
 % 入口
 Start().run(config);
-
-%% 程序到此结束, 就是这么简单
 
 %% debug
 load('test.mat');

@@ -34,7 +34,7 @@ classdef Start < handle
 			self.method = config.method;
 
 			eval(['obj = Controller.', self.controller, '();']);
-			eval(['obj.', self.method, '()']);
+			eval(['obj.', self.method, '();']);
 		end
 
 	end

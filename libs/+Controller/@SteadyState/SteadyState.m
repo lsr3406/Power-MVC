@@ -3,32 +3,29 @@ classdef SteadyState < handle
 	properties
 
 	end
-	methods		
+	methods
 
 		%% testPF: 潮流程序测试
 		function testPF(self)
 
-			% 获取原始数据
-			% mpc = getmpc();
-			mpc = case89pegase();
-
 			% 建立电力网稳态模型并初始化
-			steadyState = Model.SteadyState();
-			steadyState.init(mpc);
+			ss = Model.SteadyState();
+			ss.init(case_ieee30());
 
 			%% 设置求解器的基本信息
-			solverConfig.method = 'FD';	% 求解方法
-			solverConfig.maxIteration = 20;	% 最大迭代
-			solverConfig.epsilon = 1e-5;	% 收敛判据, 功率不平衡量标幺
-			solverConfig.start = 'default';	% 启动方式, default 为按发电机端电压起动
-			solverConfig.documentName = 'reportNR.txt';	% 文本计算报告
+			solver.method = 'FDBX';	% 求解方法
+			solver.maxIteration = 50;	% 最大迭代
+			solver.epsilon = 1e-6;	% 收敛判据, 功率不平衡量标幺
+			solver.start = 'defaul';	% 启动方式, default 为按发电机端电压起动
+			% solver.checkReactivePower = true;	% 
 
 			%% 求解
-			result = steadyState.solvePowerFlow(solverConfig);
+			result = ss.solvePowerFlow(solver);
 
 			%% 建立视图对象并生成计算报告, 这里以文本文件作为输出结果
 			viewModel = View.Plain();
-			viewModel.getPowerFlowReport(steadyState, solverConfig, result);
+			solver.documentName = 'report.txt';	% 文本计算报告
+			viewModel.getPowerFlowReport(ss, solver, result);
 
 			save('test.mat');	% 留作测试
 		end
@@ -36,7 +33,7 @@ classdef SteadyState < handle
 		%% testSC: 短路容量计算测试
 		function testSC(self, config)
 
-			mpc = getmpc();
+			mpc = getMpcSteady();
 
 			steadyState = Model.SteadyState();
 			steadyState.init(mpc);

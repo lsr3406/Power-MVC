@@ -15,6 +15,9 @@ classdef SteadyState < handle
 		%% 雅可比矩阵在求解过程中一直改变, 不直接当做属性存储
 
 		itlog;		% 和电力系统潮流求解相关的记录
+
+		magStep;
+		angStep;
 	end
 	properties (Dependent)
 		pqIndex;		% pq 节点索引
@@ -36,7 +39,6 @@ classdef SteadyState < handle
 		transformerCount;	% 变压器数量
 	end
 	methods
-
 		%% get.pqIndex: 获取 pq 节点的索引
 		function [pqIndex] = get.pqIndex(self)
 			pqIndex = find(self.nodes.type == 1);
@@ -103,17 +105,17 @@ classdef SteadyState < handle
 		%% init: 电力系统稳态模型初始化
 		function init(self, mpc)
 
-			sortrows(mpc.bus);
+			mpc.bus = sortrows(mpc.bus);
 			self.mBase = mpc.baseMVA;
 			self.nodes.id = mpc.bus(:, 1);
 			nodesLength = length(self.nodes.id);
 			self.nodes.type = mpc.bus(:, 2);
 			self.nodes.g = mpc.bus(:,5)./self.mBase;
 			self.nodes.b = mpc.bus(:,6)./self.mBase;
-			self.nodes.mag = ones(nodesLength, 1);
-			self.nodes.ang = zeros(nodesLength, 1);
 			self.nodes.mag0 = mpc.bus(:,8);
 			self.nodes.ang0 = mpc.bus(:,9).*pi./180;
+			self.nodes.mag = self.nodes.mag0;
+			self.nodes.ang = self.nodes.ang0;
 			self.nodes.Pg = zeros(nodesLength,1);
 			self.nodes.Qg = zeros(nodesLength,1);
 			self.nodes.Pd = mpc.bus(:, 3)./mpc.baseMVA;
@@ -179,35 +181,32 @@ classdef SteadyState < handle
 		%% getNodeData: 生成节点参数,主要是带有独立导纳设备的节点参数
 		% 这里将节点上的并联电容视为恒阻抗模型,并将其归算至节点导纳矩阵
 		function [nodeData] = getNodeData(self)
-			nodeData = [self.nodes.id,self.nodes.g,self.nodes.b];
+			nodeData = [self.nodes.id, self.nodes.g, self.nodes.b];
 		end
 		%% getLineData: 生成线路参数,包括线路和变压器
 		function [lineData] = getLineData(self)
 			% 起始节点	终止节点	线路电阻	线路电抗	线路对地电导	线路对地电纳	变比
-			lineData = [self.branches.fid,self.branches.tid,self.branches.r,self.branches.x,self.branches.g,self.branches.b,self.branches.ratio,self.branches.angle];
+			lineData = [self.branches.fid, self.branches.tid, self.branches.r, self.branches.x, self.branches.g, self.branches.b, self.branches.ratio, self.branches.angle];
 		end
 
 		%% NAMInit: 计算节点导纳矩阵, 结果存放于电力网相应属性中
 		% @return void
 		function NAMInit(self)
-			lineData = self.getLineData();
-			nodeData = self.getNodeData();
-			getAdmittanceMatrix(nodeData, lineData, self);
+			self.NAM = Model.NAM();
+			self.NAM.init(self.getNodeData(), self.getLineData());
 		end
 		
 		%% votageInit: 获取迭代初始值(考虑对节点的设置及发电机的设置), 结果存放于 nodes 字段相应属性中
 		% @return void
-		function votageInit(self, config)
+		function votageInit(self, solver)
 
-			if isstruct(config) && isfield(config, 'start') && strcmp(config.start, 'default')
-				self.nodes.mag = self.nodes.mag0;
-				self.nodes.ang = self.nodes.ang0;			
+			if isstruct(solver) && isfield(solver, 'start') && strcmp(solver.start, 'default')
+				% do nothing			
 			else	% 0-1 启动
-				self.nodes.mag = ones(length(self.nodes.id),1);
-				self.nodes.ang = zeros(length(self.nodes.id),1);
+				self.nodes.mag(self.pqIndex) = 1.05;
+				self.nodes.ang([self.pqIndex; self.pvIndex]) = 0;
 			end
 		end
-
 
 		%% planInit: 初始化,用于计算各节点功率计划值,并根据发电机的情况计算出该节点可发出的的最大无功功率, 结果存放于 nodes 字段相应属性中
 		% @return void
@@ -232,12 +231,11 @@ classdef SteadyState < handle
 		%% setPowerOutflow: 计算从 nid 节点注入电网的潮流, 结果存放于 nodes 字段相应属性中
 		% @param  int32   nid   节点 id
 		% @return void
-		function setPowerOutflow(self,nid)
+		function setPowerOutflow(self, nid)
 			for k = 1:length(nid)
 				index = find(self.nodes.id == nid(k));
-				% index
-				% self
-				Sf = conj(self.NAM(index,:))*(self.nodes.mag.*exp(i.*(self.nodes.ang(index)-self.nodes.ang))).*self.nodes.mag(index);
+				% disp(index)
+				Sf = conj(self.NAM.value(index, :))*(self.nodes.mag.*exp(i.*(self.nodes.ang(index)-self.nodes.ang))).*self.nodes.mag(index);
 				self.nodes.Pout(k) = real(Sf);
 				self.nodes.Qout(k) = imag(Sf);
 			end
@@ -261,17 +259,22 @@ classdef SteadyState < handle
 		end
 
 		%% checkConverged: 判断是否收敛, 同时检查是否结束循环
-		% @param  struct  config         与判断收敛相关的设置
+		% @param  struct  solver         与判断收敛相关的设置
 		% --attr  double  epsilon        允许的功率误差
 		% --attr  int32   maxIteration   最大迭代次数
 		% @return int32   status       判断结果, 0 表示未收敛, 1 表示已收敛
-		function [status] = checkConverged(self, config, it)
+		function [status] = checkConverged(self, solver, it)
 			% 收敛判据
-			if config.epsilon >= max(abs([self.nodes.dP([self.pqIndex;self.pvIndex]);self.nodes.dQ(self.pqIndex)]))
+			% magdev = max(abs([self.nodes.dQ]));
+			% angdev = max(abs([self.nodes.dP]));
+			if solver.epsilon >= max(abs([self.nodes.dQ; self.nodes.dP]))
 				status = 1;	% 收敛
-			elseif it >= config.maxIteration
+			elseif it >= solver.maxIteration
+				fprintf('Exception 101: Number of iterations exceeds the limit\n');
 				status = 101;	% 迭代次数超出上限
 			else
+				self.magStep = min(max(1.0 + 0.2.*log10(self.nodes.dQ([self.pqIndex])), 0.05), 1.1);
+				self.angStep = min(max(1.0 + 0.2.*log10(self.nodes.dP([self.pqIndex; self.pvIndex])), 0.05), 1.1);
 				status = 0;	% 未收敛, 继续计算
 			end
 		end
@@ -282,8 +285,8 @@ classdef SteadyState < handle
 
 			% 为方便构造雅可比矩阵,现分别对 PQ 节点及 PV 节点提取出节点电压及节点导纳, 并计算节点之间的相角矩阵
 			% 本方法中, 变量名以 1 结尾的均与雅可比矩阵中的 H N M 有关, 变量名以 2 结尾的均与雅可比矩阵中的 N M L 有关
-			NAM1 = self.NAM([self.pqIndex; self.pvIndex], [self.pqIndex; self.pvIndex]);
-			NAM2 = self.NAM([self.pqIndex], [self.pqIndex]);
+			NAM1 = self.NAM.value([self.pqIndex; self.pvIndex], [self.pqIndex; self.pvIndex]);
+			NAM2 = self.NAM.value([self.pqIndex], [self.pqIndex]);
 
 			mag1 = self.nodes.mag([self.pqIndex; self.pvIndex]);
 			ang1 = self.nodes.ang([self.pqIndex; self.pvIndex]);
@@ -300,14 +303,14 @@ classdef SteadyState < handle
 
 			% 先计算各个分块矩阵的非对角元
 			% 需要注意的是, 下面的两个索引表示在雅可比矩阵的初始状态中 PQPV 节点及 PQ 节点所在的位置, 而 self.pqIndex 表示在节点对象中 PQ 节点所在的位置
-			pqpvIndex = 1:(self.pqCount + self.pvCount);
-			pqIndex = 1:self.pqCount;
+			pqpv = 1:(self.pqCount + self.pvCount);
+			pq = 1:self.pqCount;
 
 			% 雅可比矩阵的非对角元均可以在初始状态矩阵中提取
-			Hij = imag(jacPrimary([pqpvIndex],[pqpvIndex]));	% Hij 表示系统中有功潮流差与相角差的数量关系
-			Nij = real(jacPrimary([pqpvIndex],[pqIndex]));	% Nij 表示系统中有功潮流差与电压差的相对值的数量关系
-			Mij = -real(jacPrimary([pqIndex],[pqpvIndex]));	% Mij 表示系统中无功潮流差与相角差的数量关系
-			Lij = imag(jacPrimary([pqIndex],[pqIndex]));	% Lij 表示系统中无功潮流差与电压差的相对值的数量关系
+			Hij = imag(jacPrimary([pqpv], [pqpv]));	% Hij 表示系统中有功潮流差与相角差的数量关系
+			Nij = real(jacPrimary([pqpv], [pq]));	% Nij 表示系统中有功潮流差与电压差的相对值的数量关系
+			Mij = -real(jacPrimary([pq], [pqpv]));	% Mij 表示系统中无功潮流差与相角差的数量关系
+			Lij = imag(jacPrimary([pq], [pq]));	% Lij 表示系统中无功潮流差与电压差的相对值的数量关系
 
 			% 再计算各个分块矩阵的对角元. 求导的原因, 使得对角元需要单独计算
 			Hii = -self.nodes.Qout([self.pqIndex; self.pvIndex]) - mag1.^2.*imag(diag(NAM1));
@@ -316,25 +319,69 @@ classdef SteadyState < handle
 			Lii = self.nodes.Qout(self.pqIndex) - mag2.^2.*imag(diag(NAM2));
 
 			Hij = Hij + diag(Hii);
-			Nij(pqIndex,pqIndex) = Nij(pqIndex,pqIndex) + diag(Nii);
-			Mij(pqIndex,pqIndex) = Mij(pqIndex,pqIndex) + diag(Mii);
+			Nij(pq, pq) = Nij(pq, pq) + diag(Nii);
+			Mij(pq, pq) = Mij(pq, pq) + diag(Mii);
 			Lij = Lij + diag(Lii);
 
 			% 在这里拼成雅可比矩阵
 			jacobianMatrix = [Hij, Nij; Mij, Lij;];
 		end
 
-		%% getFDM: 计算 PQ 分解法的系数矩阵
-		function getFDM(self, fdType)
+		%% getFDM: 返回 PQ 分解法的 B 矩阵
+		% @param  string     fdType    PQ 分解法的系数矩阵类型(FD, FDBX, FDXB)
+		% @param  array      nodesType 矩阵中包含的节点类型, 要得到 B' 时传 [1, 2], 要得到 B'' 时传 [1]
+		% @return n*n double 系数矩阵
+		function [matrix] = getFDM(self, fdType, nodesType)
+
+			assert(ismember(1, nodesType) && ~ismember(3, nodesType));
+
+			matrix = sparse(zeros(self.pqCount + self.pvCount + self.refCount));
+			switch fdType
+				case 'r'	% 考虑线路电阻
+					for k = 1:length(self.branches.id)
+						fi = find(self.nodes.id == self.branches.fid(k));
+						ti = find(self.nodes.id == self.branches.tid(k));
+						b = self.branches.x(k)./(self.branches.r(k).^2 + self.branches.x(k).^2);
+						matrix([fi, ti], [fi, ti]) = matrix([fi, ti], [fi, ti]) + [b, -b; -b, b];
+					end
+				case 'b'	% 考虑节点电纳
+					for k = 1:length(self.branches.id)
+						fi = find(self.nodes.id == self.branches.fid(k));
+						ti = find(self.nodes.id == self.branches.tid(k));
+						b = 1./self.branches.x(k);
+						matrix([fi, ti], [fi, ti]) = matrix([fi, ti], [fi, ti]) + [b, -b; -b, b];
+					end
+					matrix = matrix - diag(self.nodes.b);
+				otherwise
+					error('illegal fast duplicate type in getFDM');
+			end
+
+			index = find(self.nodes.type == 1);
+			if ismember(2, nodesType)
+				index = [index; find(self.nodes.type == 2)];
+			end
+
+			matrix = -matrix(index, index);
+		end
+
+		%% setFDM: 计算 PQ 分解法的系数矩阵
+		% @param  string     fdType    PQ 分解法的系数矩阵类型(FD, FDBX, FDXB)
+		% @return  void
+		function setFDM(self, fdType)
 			switch fdType
 				case 'FD'
-					self.FDM1 = imag(self.NAM([self.pqIndex;self.pvIndex],[self.pqIndex;self.pvIndex]));
-					self.FDM2 = imag(self.NAM([self.pqIndex],[self.pqIndex]));
+					self.FDM1 = imag(self.NAM.value([self.pqIndex; self.pvIndex],[self.pqIndex; self.pvIndex]));
+					self.FDM2 = imag(self.NAM.value([self.pqIndex], [self.pqIndex]));
+				case 'FDBX'
+					self.FDM1 = self.getFDM('r', [1, 2]);	% 考虑线路电阻
+					self.FDM2 = self.getFDM('b', [1]);		% 考虑节点电纳
+				case 'FDXB'
+					self.FDM1 = self.getFDM('b', [1, 2]);
+					self.FDM2 = self.getFDM('r', [1]);
 				otherwise
-					throw('illegal fast duplicate type');
+					error('illegal fast duplicate type in setFDM');
 			end
 		end
-		
 
 		%% getVotageAndAngleCorrection: 修正方程, 用于牛顿法
 		%　@param  n*n-double  jacobianMatrix   雅克比矩阵
@@ -401,7 +448,7 @@ classdef SteadyState < handle
 		function setGeneratorPower(self)
 			% 每个节点发电机发出的功率都等于当地需求和收敛时潮流方程计算的注入电网的功率的和
 			self.nodes.Pg(self.refIndex) = self.nodes.Pout(self.refIndex) + self.nodes.Pd(self.refIndex);
-			self.nodes.Qg([self.pvIndex; self.refIndex]) = self.nodes.Qout([self.pvIndex; self.refIndex]) + self.nodes.Qd([self.pvIndex; self.refIndex]);
+			self.nodes.Qg([self.pvIndex; self.refIndex]) = self.nodes.Qout([self.pvIndex;  self.refIndex]) + self.nodes.Qd([self.pvIndex; self.refIndex]);
 		end
 
 		%% getLinePower: 计算普通线路的潮流
@@ -431,7 +478,7 @@ classdef SteadyState < handle
 		% @return complex dS       线路中的损耗, 但线路充电电容的影响也考虑了进去. 标幺值
 		function [Sij,Sji,dS] = getTransformerPower(self, index)
 			%　首先确定变压器　pi 型等效电路的三个参数
-			[trZ,trY1,trY2] = gamma2pi((self.branches.r(index)+self.branches.x(index)*1i), (self.branches.g(index)+self.branches.b(index)*1i), self.branches.ratio(index));
+			[trZ, trY1, trY2] = gamma2pi((self.branches.r(index)+self.branches.x(index)*1i), (self.branches.g(index)+self.branches.b(index)*1i), self.branches.ratio(index));
 			%　计算三个导纳值，计算功率时会用到
 			conjYi0 = conj(trY1) - (self.branches.g(index)+self.branches.b(index)*1i)./2;
 			conjYj0 = conj(trY2) - (self.branches.g(index)+self.branches.b(index)*1i)./2;
@@ -453,7 +500,7 @@ classdef SteadyState < handle
 			Sij = zeros(length(self.branches.id), 1);
 			Sji = zeros(length(self.branches.id), 1);
 			dS = zeros(length(self.branches.id), 1);
-			for k = self.branches.id'
+			for k = 1:length(self.branches.id)
 				if (self.branches.ratio(k)==1) || (self.branches.ratio(k)==0)
 					[Sij(k), Sji(k), dS(k)] = self.getLinePower(k);
 				else
@@ -483,7 +530,7 @@ classdef SteadyState < handle
 		end
 
 		%% NRIteration: 牛顿法迭代程序核心部分
-		% @param    struct  config	        对迭代程序的基本设置
+		% @param    struct  solver	        对迭代程序的基本设置
 		% --attr    string  method            求解方法, NR FDBX FDXB
 		% --attr    int32   maxIteration      最大迭代次数
 		% --attr    double  epsilon           收敛判据, 功率不平衡量标幺
@@ -492,7 +539,7 @@ classdef SteadyState < handle
 		% @return   struct  result          迭代结果
 		% --attr    int32   status            错误码, 为 0 表示正常
 		% --attr    int32   it                迭代次数
-		function [result] = NRIteration(self, config)
+		function [result] = NRIteration(self, solver)
 			% 从这里开始进入循环,跳出循环的条件为迭代次数超过最大次数或潮流不平衡量的一范数小于给定值
 			result.it = 0;
 
@@ -500,10 +547,12 @@ classdef SteadyState < handle
 				self.planUpdate();	% 确定各节点功率需求
 				self.setPowerOutflow(self.nodes.id);	% 潮流方程
 				self.setPowerUnbalance();	% 误差方程
+
+				self.setGeneratorPower();
 				self.setIterationData();	% 存储迭代信息,包括电压,相角,有功不平衡量,无功不平衡量
 				
 				% 判收敛以及是否迭代次数上限, 返回一个状态码, 得到非零值直接返回
-				result.status = self.checkConverged(config, result.it);
+				result.status = self.checkConverged(solver, result.it);
 				if(result.status ~= 0)	% result.status 非 0 表示收敛或错误
 					return;
 				end
@@ -518,7 +567,7 @@ classdef SteadyState < handle
 		end
 
 		%% PQIteration: PQ 分解法迭代程序核心部分
-		% @param    struct  config	        对迭代程序的基本设置
+		% @param    struct  solver	        对迭代程序的基本设置
 		% --attr    string  method            求解方法, NR FD FDBX FDXB
 		% --attr    int32   maxIteration      最大迭代次数
 		% --attr    double  epsilon           收敛判据, 功率不平衡量标幺
@@ -527,9 +576,9 @@ classdef SteadyState < handle
 		% @return   struct  result          迭代结果
 		% --attr    int32   status            错误码, 为 0 表示正常
 		% --attr    int32   it                迭代次数
-		function [result] = PQIteration(self, config)
+		function [result] = PQIteration(self, solver)
 			% 计算 PQ 分解法的两个系数矩阵
-			self.getFDM(config.method);
+			self.setFDM(solver.method);
 			% 从这里开始进入循环, 跳出循环的条件为迭代次数超过最大次数或潮流不平衡量的一范数小于给定值
 			result.it = 0;
 
@@ -537,68 +586,142 @@ classdef SteadyState < handle
 				self.planUpdate();	% 确定各节点功率需求
 				self.setPowerOutflow(self.nodes.id);	% 潮流方程
 				self.setPowerUnbalance();	% 误差方程
+
+				self.setGeneratorPower();
 				self.setIterationData();	% 存储迭代信息,包括电压,相角,有功不平衡量,无功不平衡量
 
 				% 判收敛以及是否迭代次数上限, 返回一个状态码, 得到非零值直接返回
-				result.status = self.checkConverged(config, result.it);
+				result.status = self.checkConverged(solver, result.it);
 				if(result.status ~= 0)	% result.status 非 0 表示收敛或错误
 					return;
 				end
 
 				dUpn = self.getMagCorrection();
+				self.setNewVotage(0, -dUpn.*self.magStep);	% 迭代方程
+
 				dTheta = self.getAngCorrection();
-				self.setNewVotage(-dTheta, -dUpn);	% 迭代方程
+				self.setNewVotage(-dTheta.*self.angStep, 0);	% 迭代方程
 
 				result.it = result.it + 1;
 				% ❀ 运用各节点电压的新值进行下一步的迭代.
 			end
 		end
 		
+		function [output] = checkReactivePower(self)
+
+			% 下面两句 返回的 nodesIndex 包括所有类型的节点, 但无需剔除不必要的节点
+			lack = find(self.nodes.Qmax < self.nodes.Qg);
+			excess = find(self.nodes.Qmin > self.nodes.Qg);
+
+			% 只保留 PV 节点
+			lack(find(self.nodes.type(lack) ~=2 )) = [];
+			excess(find(self.nodes.type(excess) ~=2 )) = [];
+
+			if isempty([lack; excess])
+				output = false;
+				return;
+			end
+			output = true;
+
+			self.convertToPQNode(lack, excess);
+
+			for k = 1:length(lack)
+				fprintf('%s %d %s\n', '	  Node ', self.nodes.id(lack(k)),' has insufficient reactive power and has been converted to a PQ node');
+			end
+			for k = 1:length(excess)
+				fprintf('%s %d %s\n', '	  Node ', self.nodes.id(excess(k)),' has excess reactive power and has been converted to a PQ node');
+			end
+		end
+
+		%% convertToPQNode: 解决某些节点无功不足或过剩的情况
+		function convertToPQNode(self, lack, excess)
+
+			self.nodes.Qg(lack) = self.nodes.Qmax(lack);
+			self.nodes.Qg(excess) = self.nodes.Qmin(excess);
+
+			% 修改节点类型,将其转化为 PQ 节点,并更新节点对象相应的的 PQ PV 节点的索引及数量属性
+			self.nodes.type([lack; excess]) = 1;
+
+		end
 
 		%% solvePowerFlow: 电力系统潮流计算
-		function [result] = solvePowerFlow(self, config)
+		function [result] = solvePowerFlow(self, solver)
+			if nargin ~= 2
+				error('illegal power flow solver');
+			end
 
 			% ❀ 生成节点导纳矩阵.
 			self.NAMInit();
 			% ❀ 设置节点电压的初值(电压,相角).
-			self.votageInit(config);
+			self.votageInit(solver);
 			% ❀ 将各节点电压的初值代入潮流方程,并求解有功无功不平衡量
 			self.planInit();	% 计算各节点功率的计划值
 
-			% ❀ 进入迭代. 得到的 result 包含是否收敛, 迭代次数等信息
-			switch config.method
-				case 'NR'	% 牛顿法
-					result = self.NRIteration(config);
-				case 'FD'	% PQ 分解法
-					result = self.PQIteration(config);
-				otherwise
-					% TODO otherwise
+			% 这个循环是与检测无功功率有关的, 与具体的求解无关
+			while 1
+
+				% ❀ 进入迭代. 得到的 result 包含是否收敛, 迭代次数等信息
+				switch solver.method
+					case 'NR'	% 牛顿法
+						result = self.NRIteration(solver);
+					case 'FD'	% PQ 分解法
+						result = self.PQIteration(solver);
+					case 'FDBX'	% PQ 分解法
+						result = self.PQIteration(solver);
+					case 'FDXB'	% PQ 分解法
+						result = self.PQIteration(solver);
+					otherwise
+						% TODO otherwise
+						error('illegal solver');
+				end
+
+				% 未收敛时直接返回
+				if(result.status ~= 1)
+					return;
+				end
+				
+				self.setGeneratorPower();	% 根据迭代结果计算发电机功率, 结果记录到 nodes 属性中
+				if ~isfield(solver, 'checkReactivePower') || solver.checkReactivePower ~= true || ~self.checkReactivePower()
+					break;
+				end
+				fprintf('continue\n');
 			end
 
-			% 未收敛时直接返回
-			if(result.status ~= 1)
-				return;
-			end
-			
-			self.setGeneratorPower();	% 根据迭代结果计算发电机功率, 结果记录到 nodes 属性中
 			self.setBranchPower();	% 根据迭代结果计算线路功率及损耗, 结果记录到 branches 属性中
 			self.setConpensatorPower();	% 根据迭代结果计算各节点对地电容功率, 结果记录到 nodes 属性中
-			self.setVotageRealAndImag();	% 若需要作后续暂态分析, 可以做这一步的电压转化
+			% self.setVotageRealAndImag();	% 若需要作后续暂态分析, 可以做这一步的电压转化
 		end
 
 		% addGenImpedanceToNodes: 将发电机的暂态电抗加至各节点, 为计算暂态参数做准备
-		function addGenImpedanceToNodes(self)
-			for k = 1:length(self.generator.id)
-				nid = self.generator.nid(k);
-				index = find(self.nodes.id == nid);
-				self.nodes.b(index) = self.nodes.b(index) - 1./self.generator.xd1(k);
+		% 不是给潮流分析留的接口
+		function addGenImpedanceToNodes(self, generator)
+			if nargin == 1
+				return;
+			end
+
+			index = getIndex(self.nodes.id, generator.nid);
+			yg = 1./(generator.Ra + generator.Xd1.*1i);
+			
+			self.nodes.g(index) = self.nodes.g(index) + real(yg);
+			self.nodes.b(index) = self.nodes.b(index) + imag(yg);
+			self.NAM.addAdmittance(index, yg);
+		end
+
+		% addMoterImpedanceToNodes: 将异步电动机的暂态电抗加至各节点, 为计算暂态参数做准备
+		% 不是给潮流分析留的接口
+		function addMoterImpedanceToNodes(self, moter)
+			% TODO addMoterImpedanceToNodes
+			if nargin == 1
+				return;
 			end
 		end
 
 		% addLoadImpedanceToNodes: 将负荷的电抗加至节点, 为计算暂态参数做准备
-		function [outputs] = addLoadImpedanceToNodes(self)
-			self.nodes.g = self.nodes.g + self.nodes.Pd;
-			self.nodes.b = self.nodes.b - self.nodes.Qd;
+		% 不是给潮流分析留的接口
+		function addLoadImpedanceToNodes(self)
+			self.nodes.g = self.nodes.g + self.nodes.Pd./self.nodes.mag.^2;
+			self.nodes.b = self.nodes.b - self.nodes.Qd./self.nodes.mag.^2;
+			self.NAM.addAdmittance(1:length(self.nodes.id), (self.nodes.Pd - self.nodes.Qd.*1i)./self.nodes.mag.^2);
 		end
 
 		% getShortCircultCapacity: 计算单个节点的短路容量
