@@ -20,8 +20,8 @@ classdef TransientState < handle
 
 			save('test.mat');
 
-			figure()                   
-			subplot(231)                 
+			figure()
+			subplot(231)
 			hold on
 			plot(ts.ct, (ts.delta(1, :)).*180./pi, 'lineWidth', 1.5)
 			plot(ts.ct, (ts.delta(2, :)).*180./pi, 'lineWidth', 1.5)

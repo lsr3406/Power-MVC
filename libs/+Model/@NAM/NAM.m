@@ -65,8 +65,8 @@ classdef NAM < handle
 		function addTransformer(self, from, to, z, y, k)
 			% k 可以是复数
 			self.value([from, to], [from, to]) = [
-				1./(abs(k).^2.*z),	-1./(conj(k)*z);
-				-1./(k*z),	1./z + y;
+				1./(abs(k).^2.*z) + y./2,	-1./(conj(k)*z);
+				-1./(k*z),	1./z + y./2;
 			] + self.value([from,to],[from,to]);
 		end
 
@@ -89,8 +89,19 @@ classdef NAM < handle
 			end
 		end
 
-		%% init: 根据已知线路参数及节点参数计算节点导纳矩阵
-		function init(self, nodeData, lineData)
+		%% init: 零矩阵
+		function init(self, m, n)
+			if nargin == 2
+				self.value = sparse(m, m);
+			elseif nargin == 3
+				self.value = sparse(m, n);
+			else
+				error('illegal NAM size in NAM init');
+			end
+		end
+
+		%% generate: 根据已知线路参数及节点参数计算节点导纳矩阵
+		function generate(self, nodeData, lineData)
 
 			% 任务: 根据已知信息求解得到系统的节点导纳矩阵.
 			% 注: 本程序未考虑三绕组变压器

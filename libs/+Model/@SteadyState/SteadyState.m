@@ -102,6 +102,18 @@ classdef SteadyState < handle
 			transformerCount = sum(self.branches.ratio~=0);
 		end
 
+		%% get.isLine: 返回该支路的类型, 是否为普通线路
+		function [isLine] = isLine(self, id)
+			% 支路的 id 也是 index
+			isLine = self.branches.ratio(id) == 0;
+		end
+
+		%% get.isTransformer: 返回该支路的类型, 是否为普通线路
+		function [isTransformer] = isTransformer(self, id)
+			% 支路的 id 也是 index
+			isTransformer = self.branches.ratio(id) ~= 0;
+		end
+
 		%% init: 电力系统稳态模型初始化
 		function init(self, mpc)
 
@@ -193,7 +205,7 @@ classdef SteadyState < handle
 		% @return void
 		function NAMInit(self)
 			self.NAM = Model.NAM();
-			self.NAM.init(self.getNodeData(), self.getLineData());
+			self.NAM.generate(self.getNodeData(), self.getLineData());
 		end
 		
 		%% votageInit: 获取迭代初始值(考虑对节点的设置及发电机的设置), 结果存放于 nodes 字段相应属性中
@@ -265,16 +277,17 @@ classdef SteadyState < handle
 		% @return int32   status       判断结果, 0 表示未收敛, 1 表示已收敛
 		function [status] = checkConverged(self, solver, it)
 			% 收敛判据
-			% magdev = max(abs([self.nodes.dQ]));
-			% angdev = max(abs([self.nodes.dP]));
 			if solver.epsilon >= max(abs([self.nodes.dQ; self.nodes.dP]))
 				status = 1;	% 收敛
 			elseif it >= solver.maxIteration
-				fprintf('Exception 101: Number of iterations exceeds the limit\n');
+				warning('Exception 101: Number of iterations exceeds the limit\n');
 				status = 101;	% 迭代次数超出上限
+			elseif any(self.nodes.mag > 1.5) || any(self.nodes.mag < 0.5)
+				warning('Exception 102: Some node have abnormal voltages and iteration is terminated\n');
+				status = 102;	% 部分节点电压不正常
 			else
-				self.magStep = min(max(1.0 + 0.2.*log10(self.nodes.dQ([self.pqIndex])), 0.05), 1.1);
-				self.angStep = min(max(1.0 + 0.2.*log10(self.nodes.dP([self.pqIndex; self.pvIndex])), 0.05), 1.1);
+				self.magStep = min(max(1.0 + 0.1.*log10(abs(self.nodes.dQ([self.pqIndex]))), 0.05), 1.05);
+				self.angStep = min(max(1.0 + 0.1.*log10(abs(self.nodes.dP([self.pqIndex; self.pvIndex]))), 0.05), 1.05);
 				status = 0;	% 未收敛, 继续计算
 			end
 		end
@@ -501,7 +514,7 @@ classdef SteadyState < handle
 			Sji = zeros(length(self.branches.id), 1);
 			dS = zeros(length(self.branches.id), 1);
 			for k = 1:length(self.branches.id)
-				if (self.branches.ratio(k)==1) || (self.branches.ratio(k)==0)
+				if self.isLine(k)
 					[Sij(k), Sji(k), dS(k)] = self.getLinePower(k);
 				else
 					[Sij(k), Sji(k), dS(k)] = self.getTransformerPower(k);
@@ -664,12 +677,12 @@ classdef SteadyState < handle
 				switch solver.method
 					case 'NR'	% 牛顿法
 						result = self.NRIteration(solver);
-					case 'FD'	% PQ 分解法
+					case {'FD', 'FDBX', 'FDXB'}	% PQ 分解法
 						result = self.PQIteration(solver);
-					case 'FDBX'	% PQ 分解法
-						result = self.PQIteration(solver);
-					case 'FDXB'	% PQ 分解法
-						result = self.PQIteration(solver);
+					% case 'FDBX'	% PQ 分解法
+					% 	result = self.PQIteration(solver);
+					% case 'FDXB'	% PQ 分解法
+					% 	result = self.PQIteration(solver);
 					otherwise
 						% TODO otherwise
 						error('illegal solver');
