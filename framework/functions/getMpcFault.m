@@ -3,9 +3,9 @@ function [mpc] = getMpcFault()
 
 	% nid, Ra, Xd'1, Xd'2, Xd'0, Xn, Connection
 	mpc.gen = {
-		1	0	0.0608	0.0608	inf	inf	'Y';
-		2	0	0.1198	0.1198	inf	inf	'Y';
-		3	0	0.1813	0.1813	inf	inf	'Y';
+		1	0	0.0608	0.0608	0.18	0	'Yn';
+		2	0	0.1198	0.1198	0.36	0	'Yn';
+		3	0	0.1813	0.1813	0.54	0	'Yn';
 	};
 
 	% fid, tid, r, x1, x0, 
@@ -20,16 +20,16 @@ function [mpc] = getMpcFault()
 
 	% fid, tid, rt, Xt1, Xt0, Xn, ratio, angle, Connection
 	mpc.transformer = {
-		1	4	0	0.0576	0.14	0	1	0	'YNd11';
-		2	7	0	0.0625	0.16	0	1	0	'YNd11';
-		3	9	0	0.0586	0.15	0	1	0	'YNd11';
+		1	4	0	0.0576	0.14	0	1	0	'Dyn11';
+		2	7	0	0.0625	0.16	0	1	0	'Dyn11';
+		3	9	0	0.0586	0.15	0	1	0	'Dyn11';
 	};
 
 	mpc.fault = [];
-	mpc.fault.nid = 6;
+	mpc.fault.nid = 5;
 	mpc.fault.zf = 0;
-	% mpc.fault.zg = 0;
-	mpc.fault.type = 'f1';
-	mpc.fault.phase = 'a';
+	mpc.fault.zg = 0;
+	mpc.fault.type = 'f11';
+	mpc.fault.phase = 'bc';
 
 end

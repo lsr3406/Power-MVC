@@ -192,7 +192,7 @@ classdef Fault < handle
 		%% checkTransformerGroup: 检查联结组的合法性, 并返回联结组信息
 		function [group] = checkTransformerGroup(self, string)
 
-			group = regexp(string, '(?<from>Y|YN|Y0|D)(?<to>y|yn|y0|d)(?<number>\d+)', 'names');
+			group = regexpi(string, '(?<from>Y|YN|Y0|D)(?<to>y|yn|y0|d)(?<number>\d+)', 'names');
 			group.number = str2num(group.number);
 
 			matchSize = size(group);
@@ -214,22 +214,24 @@ classdef Fault < handle
 
 		%% getZeroSequenceInfo(self, id, group): 返回变压器零序参数向节点导纳矩阵中添加的信息
 		function [nodes, item] = getZeroSequenceInfo(self, id, group)
+			% 不计零序电阻
 			if strcmp(group.from, 'D') && ~strcmp(group.to, 'y')
 				nodes = 'to';
-				item = 1./(self.branches.r(id) + (self.branches.x0(id) + 3.*self.branches.xn(id)).*1i);	% 向节点上添加的是导纳
+				item = 1./((self.branches.x0(id) + 3.*self.branches.xn(id)).*1i);	% 向节点上添加的是导纳
 				return ;
 			end
-			if strcmp(group.from, 'd') && ~strcmp(group.from, 'Y')
+			if strcmp(group.to, 'd') && ~strcmp(group.from, 'Y')
 				nodes = 'from';
-				item = 1./(self.branches.r(id) + (self.branches.x0(id) + 3.*self.branches.xn(id)).*1i);	% 向节点上添加的是导纳
+				item = 1./((self.branches.x0(id) + 3.*self.branches.xn(id)).*1i);	% 向节点上添加的是导纳
 				return ;
 			end
-			if ~strcmp(group.from, 'Y') && ~strcmp(group.from, 'y')
+			if ~strcmp(group.from, 'Y') && ~strcmp(group.to, 'y')
 				nodes = 'both';
-				item = self.branches.r(id) + (self.branches.x0(id) + 3.*self.branches.xn(id)).*1i;	% 向线路上添加的是阻抗
+				item = (self.branches.x0(id) + 3.*self.branches.xn(id)).*1i;	% 向线路上添加的是阻抗
 				return ;
 			end
 			nodes = 'none';
+			item = [];
 		end
 
 		%% addLineToNAM: 将单条线路添加到正序负序零序节点导纳矩阵
@@ -245,7 +247,7 @@ classdef Fault < handle
 				self.NAM2.addImpedance(fi, ti, self.branches.r(id) + self.branches.x1(id).*1i);
 			end
 			if findstr(seq, '0')
-				self.NAM0.addImpedance(fi, ti, self.branches.r(id) + self.branches.x0(id).*1i);
+				self.NAM0.addImpedance(fi, ti, self.branches.x0(id).*1i);	% 不计零序电阻
 			end
 		end
 		
@@ -272,12 +274,12 @@ classdef Fault < handle
 			% 变压器的零序等效电路结构与变压器的联结组及标号有关. 下面分别讨论
 			% 零序不需要根据点数移相, 也不用考虑变压器本身的移相功能
 			if findstr(seq, '0')
-				[zsNodes, zsItem] = self.getZeroSequenceInfo(id, group);
+				[zsNodes, zsItem] = self.getZeroSequenceInfo(id, group);	% TODO 阻抗应分一半移相
 				switch zsNodes
 					case 'from'
-						self.NAM0.addAdmittance(self.branches.from(id), zsItem);	% 环流 + 开路
+						self.NAM0.addAdmittance(self.branches.fid(id), zsItem);	% 环流 + 开路
 					case 'to'
-						self.NAM0.addAdmittance(self.branches.to(id), zsItem);	% 环流 + 开路
+						self.NAM0.addAdmittance(self.branches.tid(id), zsItem);	% 环流 + 开路
 					case 'both'
 						% 零序能通过两侧都接地的变压器, 在导纳矩阵中应放通
 						self.NAM0.addBranch(fi, ti, zsItem, 0, self.branches.ratio(id).*exp(1i.*(self.branches.angle(id) + dAngle)));
@@ -302,7 +304,7 @@ classdef Fault < handle
 				zeroPass = regexp(self.generator.group, '^[Yy][Nn0]$');
 				for k = 1:length(self.generator.nid)
 					if zeroPass{k}
-						self.NAM0.addAdmittance(index, 1./(self.generator.r + (self.generator.x0 + 3.*self.generator.xn).*i));
+						self.NAM0.addAdmittance(index, 1./((self.generator.x0 + 3.*self.generator.xn).*1i));
 					end
 				end
 			end
@@ -399,7 +401,7 @@ classdef Fault < handle
 			for k = self.transformerIndex
 				fi = find(self.ss.nodes.id == self.branches.fid(k));
 				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I1(k) = (self.nodes.U1(fi).*self.branches.ratio(k).*exp(self.branches.angle(k)) - self.nodes.U1(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
+				self.branches.I1(k) = (self.nodes.U1(fi).*self.branches.ratio(k).*exp(self.branches.angle(k).*1i) - self.nodes.U1(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
 			end
 			for k = self.lineIndex
 				fi = find(self.ss.nodes.id == self.branches.fid(k));
@@ -415,7 +417,7 @@ classdef Fault < handle
 			for k = self.transformerIndex
 				fi = find(self.ss.nodes.id == self.branches.fid(k));
 				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I2(k) = (self.nodes.U2(fi).*self.branches.ratio(k).*exp(self.branches.angle(k)) - self.nodes.U2(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
+				self.branches.I2(k) = (self.nodes.U2(fi).*self.branches.ratio(k).*exp(self.branches.angle(k).*1i) - self.nodes.U2(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
 			end
 			for k = self.lineIndex
 				fi = find(self.ss.nodes.id == self.branches.fid(k));
@@ -431,7 +433,7 @@ classdef Fault < handle
 			for k = self.transformerIndex
 				fi = find(self.ss.nodes.id == self.branches.fid(k));
 				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I0(k) = (self.nodes.U0(fi).*self.branches.ratio(k).*exp(self.branches.angle(k)) - self.nodes.U0(ti)) ./ (self.branches.r(k) + self.branches.x0(k).*1i);
+				self.branches.I0(k) = (self.nodes.U0(fi).*self.branches.ratio(k).*exp(self.branches.angle(k).*1i) - self.nodes.U0(ti)) ./ (self.branches.r(k) + self.branches.x0(k).*1i);
 			end
 			for k = self.lineIndex
 				fi = find(self.ss.nodes.id == self.branches.fid(k));
@@ -537,7 +539,13 @@ classdef Fault < handle
 				z1 = self.NAM1.get() \ ek;
 				z2 = self.NAM2.get() \ ek;
 				z0 = self.NAM0.get() \ ek;
+				% z0 = pinv(full(self.NAM0.get())) * ek;	% 零序网络有可能不能连通, 这里使用广义逆
 			end
+
+			% debug
+			% disp(z1);
+			% disp(z2);
+			% disp(z0);
 
 			% 计算附加阻抗与电流系数
 			[za, k2, k0] = self.calcSumInfo('f1', z2(k), z0(k));
