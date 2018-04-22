@@ -163,7 +163,8 @@ classdef Fault < handle
 		function [basePhase] = getBasePhase(self)
 			switch self.fault.type
 				case 'f3'
-					basePhase = 'none';
+					basePhase = 'a';
+					% basePhase = 'none';
 				case {'f2', 'f11'}
 					if ~isempty(regexpi(self.fault.phase, '(ab|ba)', 'match'))
 						basePhase = 'c';
@@ -189,7 +190,7 @@ classdef Fault < handle
 			end
 		end
 
-		%% checkTransformerGroup: 检查联结组的合法性, 并返回联结组信息
+		%% checkTransformerGroup: 检查变压器联结组的合法性, 并返回联结组信息
 		function [group] = checkTransformerGroup(self, string)
 
 			group = regexpi(string, '(?<from>Y|YN|Y0|D)(?<to>y|yn|y0|d)(?<number>\d+)', 'names');
@@ -360,7 +361,7 @@ classdef Fault < handle
 			self.ss.solvePowerFlow(solver);
 		end
 
-		%% calcSumInfo: 
+		%% calcSumInfo: 求解与复合序网相关的信息(附加阻抗, 负序电流系数, 零序电流系数)
 		function [za, k2, k0] = calcSumInfo(self, faultType, z2f, z0f)
 			switch faultType
 				case 'f3'
@@ -442,7 +443,26 @@ classdef Fault < handle
 			end
 		end
 
-		%% solveThreePhaseShortCircult: 三相短路
+		%% saveItlog: 保存基本的故障中间计算信息
+		function saveItlog(self, Uf120, If120)
+
+			self.itlog.Uf1 = Uf120(1);
+			self.itlog.Uf2 = Uf120(2);
+			self.itlog.Uf0 = Uf120(3);
+			self.itlog.If1 = If120(1);
+			self.itlog.If2 = If120(2);
+			self.itlog.If0 = If120(3);
+
+			self.itlog.Ufa = sum(Uf120.*self.T(1, :));
+			self.itlog.Ufb = sum(Uf120.*self.T(2, :));
+			self.itlog.Ufc = sum(Uf120.*self.T(3, :));
+			self.itlog.Ifa = sum(If120.*self.T(1, :));
+			self.itlog.Ifb = sum(If120.*self.T(2, :));
+			self.itlog.Ifc = sum(If120.*self.T(3, :));
+		end
+		
+
+		%% solveThreePhaseShortCircult: 三相短路电网电压的计算
 		function solveThreePhaseShortCircult(self)
 			% 三相短路, 无需考虑负序与零序
 			self.NAM1.init(length(self.ss.nodes.id));
@@ -465,6 +485,9 @@ classdef Fault < handle
 
 			self.nodes.U1 = Uss - If1 .* z1;
 
+			% save
+			self.saveItlog([self.nodes.U1(k), 0, 0], [If1, 0, 0]);
+
 			% 计算全网正序电流
 			self.calcNetCurrentPS(self.nodes.U1);
 
@@ -477,7 +500,7 @@ classdef Fault < handle
 			self.nodes.Uc = self.nodes.U1.*exp(2./3.*pi.*1i);
 		end
 
-		%% solveTwoPhaseShortCircult: 两相短路
+		%% solveTwoPhaseShortCircult: 两相短路电网电压的计算
 		function solveTwoPhaseShortCircult(self)
 			% 两相短路, 无需考虑零序
 			self.NAM1.init(length(self.ss.nodes.id));
@@ -508,22 +531,26 @@ classdef Fault < handle
 			self.nodes.U1 = Uss - z1 .* If1;
 			self.nodes.U2 = - z2 .* If2;
 
+
+			% save
+			self.saveItlog([self.nodes.U1(k), self.nodes.U2(k), 0], [If1, If2, 0]);
+
 			% 计算全网正序电流
 			self.calcNetCurrentPS(self.nodes.U1);
 			self.calcNetCurrentNS(self.nodes.U2);
 
-			% 计算全网电压与电流
-			I = self.T * [self.branches.I1, self.branches.I2, zeros(length(self.branches.I1), 1)]';	% 3 * n
-			self.branches.Ia = I(1, :)';
-			self.branches.Ib = I(2, :)';
-			self.branches.Ic = I(3, :)';
-			U = self.T * [self.nodes.U1, self.nodes.U2, zeros(length(self.nodes.U1), 1)]';	% 3 * n
-			self.nodes.Ua = U(1, :)';
-			self.nodes.Ub = U(2, :)';
-			self.nodes.Uc = U(3, :)';
+			% 计算全网电压与电流(这里都是非共轭转置)
+			I = self.T * transpose([self.branches.I1, self.branches.I2, zeros(length(self.branches.I1), 1)]);	% 3 * n
+			self.branches.Ia = transpose(I(1, :));
+			self.branches.Ib = transpose(I(2, :));
+			self.branches.Ic = transpose(I(3, :));
+			U = self.T * transpose([self.nodes.U1, self.nodes.U2, zeros(length(self.nodes.U1), 1)]);	% 3 * n
+			self.nodes.Ua = transpose(U(1, :));
+			self.nodes.Ub = transpose(U(2, :));
+			self.nodes.Uc = transpose(U(3, :));
 		end
 
-		%% solveSinglePhaseShortCircult: 单相短路
+		%% solveSinglePhaseShortCircult: 单相短路电网电压的计算
 		function solveSinglePhaseShortCircult(self)
 			% 单相短路
 			self.NAM1.init(length(self.ss.nodes.id));
@@ -565,23 +592,27 @@ classdef Fault < handle
 			self.nodes.U2 = - z2 .* If2;
 			self.nodes.U0 = - z0 .* If0;
 
+			% save
+			self.saveItlog([self.nodes.U1(k), self.nodes.U2(k), self.nodes.U0(k)], [If1, If2, If0]);
+
 			% 计算全网正序电流
 			self.calcNetCurrentPS(self.nodes.U1);
 			self.calcNetCurrentNS(self.nodes.U2);
 			self.calcNetCurrentZS(self.nodes.U0);
 
 			% 计算全网电压与电流
-			I = self.T * [self.branches.I1, self.branches.I2, self.branches.I0]';	% 3 * n
-			self.branches.Ia = I(1, :)';
-			self.branches.Ib = I(2, :)';
-			self.branches.Ic = I(3, :)';
-			U = self.T * [self.nodes.U1, self.nodes.U2, self.nodes.U0]';	% 3 * n
-			self.nodes.Ua = U(1, :)';
-			self.nodes.Ub = U(2, :)';
-			self.nodes.Uc = U(3, :)';
+			I = self.T * transpose([self.branches.I1, self.branches.I2, self.branches.I0]);	% 3 * n
+			self.branches.Ia = transpose(I(1, :));
+			self.branches.Ib = transpose(I(2, :));
+			self.branches.Ic = transpose(I(3, :));
+			U = self.T * transpose([self.nodes.U1, self.nodes.U2, self.nodes.U0]);	% 3 * n
+			self.nodes.Ua = transpose(U(1, :));
+			self.nodes.Ub = transpose(U(2, :));
+			self.nodes.Uc = transpose(U(3, :));
+			
 		end
 
-		%% solveTwoPhaseShortCircultToGround: 两相短路接地
+		%% solveTwoPhaseShortCircultToGround: 两相短路接地电网电压的计算
 		function solveTwoPhaseShortCircultToGround(self)
 			% 两相短路接地
 			self.NAM1.init(length(self.ss.nodes.id));
@@ -617,24 +648,27 @@ classdef Fault < handle
 			self.nodes.U2 = - z2 .* If2;
 			self.nodes.U0 = - z0 .* If0;
 
+			% save
+			self.saveItlog([self.nodes.U1(k), self.nodes.U2(k), self.nodes.U0(k)], [If1, If2, If0]);
+
 			% 计算全网正序电流
 			self.calcNetCurrentPS(self.nodes.U1);
 			self.calcNetCurrentNS(self.nodes.U2);
 			self.calcNetCurrentZS(self.nodes.U0);
 
 			% 计算全网电压与电流
-			I = self.T * [self.branches.I1, self.branches.I2, self.branches.I0]';	% 3 * n
-			self.branches.Ia = I(1, :)';
-			self.branches.Ib = I(2, :)';
-			self.branches.Ic = I(3, :)';
-			U = self.T * [self.nodes.U1, self.nodes.U2, self.nodes.U0]';	% 3 * n
-			self.nodes.Ua = U(1, :)';
-			self.nodes.Ub = U(2, :)';
-			self.nodes.Uc = U(3, :)';
+			I = self.T * transpose([self.branches.I1, self.branches.I2, self.branches.I0]);	% 3 * n
+			self.branches.Ia = transpose(I(1, :));
+			self.branches.Ib = transpose(I(2, :));
+			self.branches.Ic = transpose(I(3, :));
+			U = self.T * transpose([self.nodes.U1, self.nodes.U2, self.nodes.U0]);	% 3 * n
+			self.nodes.Ua = transpose(U(1, :));
+			self.nodes.Ub = transpose(U(2, :));
+			self.nodes.Uc = transpose(U(3, :));
 		end
 
 		%% solveFault: 电力系统故障分析
-		function solveFault(self, solver, mpcSteady)
+		function [result] = solveFault(self, solver, mpcSteady)
 			
 			% 潮流计算
 			self.getPowerFlowResult(mpcSteady);
@@ -656,6 +690,7 @@ classdef Fault < handle
 				otherwise
 					error('illegal fault type');
 			end
+			result.status = 1;
 		end
 
 	end

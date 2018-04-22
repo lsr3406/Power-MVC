@@ -1,3 +1,4 @@
+% 节点导纳矩阵
 classdef NAM < handle
 	
 	properties

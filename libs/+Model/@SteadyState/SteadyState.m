@@ -185,17 +185,21 @@ classdef SteadyState < handle
 			self.itlog.dP = [];
 			self.itlog.dQ = [];
 
+			self.NAM = [];
+			self.FDM1 = [];
+			self.FDM2 = [];
+
 			% Mar 21 2018	设立节点电压 x, y分量, 用于机网转换
 			self.nodes.Ux = zeros(nodesLength, 1);
 			self.nodes.Uy = zeros(nodesLength, 1);
 		end
 
-		%% getNodeData: 生成节点参数,主要是带有独立导纳设备的节点参数
+		%% getNodeData: 生成节点参数, 主要是带有独立导纳设备的节点参数
 		% 这里将节点上的并联电容视为恒阻抗模型,并将其归算至节点导纳矩阵
 		function [nodeData] = getNodeData(self)
 			nodeData = [self.nodes.id, self.nodes.g, self.nodes.b];
 		end
-		%% getLineData: 生成线路参数,包括线路和变压器
+		%% getLineData: 生成线路参数, 包括线路和变压器
 		function [lineData] = getLineData(self)
 			% 起始节点	终止节点	线路电阻	线路电抗	线路对地电导	线路对地电纳	变比
 			lineData = [self.branches.fid, self.branches.tid, self.branches.r, self.branches.x, self.branches.g, self.branches.b, self.branches.ratio, self.branches.angle];
@@ -215,7 +219,7 @@ classdef SteadyState < handle
 			if isstruct(solver) && isfield(solver, 'start') && strcmp(solver.start, 'default')
 				% do nothing			
 			else	% 0-1 启动
-				self.nodes.mag(self.pqIndex) = 1.05;
+				self.nodes.mag(self.pqIndex) = 1;
 				self.nodes.ang([self.pqIndex; self.pvIndex]) = 0;
 			end
 		end
@@ -280,14 +284,14 @@ classdef SteadyState < handle
 			if solver.epsilon >= max(abs([self.nodes.dQ; self.nodes.dP]))
 				status = 1;	% 收敛
 			elseif it >= solver.maxIteration
-				warning('Exception 101: Number of iterations exceeds the limit\n');
+				warning('Exception 101: Number of iterations exceeds the limit');
 				status = 101;	% 迭代次数超出上限
-			elseif any(self.nodes.mag > 1.5) || any(self.nodes.mag < 0.5)
-				warning('Exception 102: Some node have abnormal voltages and iteration is terminated\n');
+			elseif any(self.nodes.mag > 2.5) || any(self.nodes.mag < 0.4)
+				warning('Exception 102: Some node have abnormal voltages and iteration is terminated');
 				status = 102;	% 部分节点电压不正常
 			else
-				self.magStep = min(max(1.0 + 0.1.*log10(abs(self.nodes.dQ([self.pqIndex]))), 0.05), 1.05);
-				self.angStep = min(max(1.0 + 0.1.*log10(abs(self.nodes.dP([self.pqIndex; self.pvIndex]))), 0.05), 1.05);
+				self.magStep = min(max(1.0 + 0.12.*log10(abs(self.nodes.dQ([self.pqIndex]))), 0.05), 0.9);
+				self.angStep = min(max(1.0 + 0.12.*log10(abs(self.nodes.dP([self.pqIndex; self.pvIndex]))), 0.05), 0.9);
 				status = 0;	% 未收敛, 继续计算
 			end
 		end
@@ -610,16 +614,25 @@ classdef SteadyState < handle
 				end
 
 				dUpn = self.getMagCorrection();
-				self.setNewVotage(0, -dUpn.*self.magStep);	% 迭代方程
+				if isfield(solver, 'step') && solver.step == true
+					self.setNewVotage(0, -dUpn.*self.magStep);	% 迭代方程
+				else
+					self.setNewVotage(0, -dUpn);	% 迭代方程
+				end
 
 				dTheta = self.getAngCorrection();
-				self.setNewVotage(-dTheta.*self.angStep, 0);	% 迭代方程
-
+				if isfield(solver, 'step') && solver.step == true
+					self.setNewVotage(-dTheta.*self.angStep, 0);	% 迭代方程
+				else
+					self.setNewVotage(-dTheta, 0);	% 迭代方程
+				end
+				
 				result.it = result.it + 1;
 				% ❀ 运用各节点电压的新值进行下一步的迭代.
 			end
 		end
 		
+		%% checkReactivePower: 考察各节点的发电机无功功率是否越限, 并采取相应措施(节点类型转化)
 		function [output] = checkReactivePower(self)
 
 			% 下面两句 返回的 nodesIndex 包括所有类型的节点, 但无需剔除不必要的节点
@@ -679,12 +692,7 @@ classdef SteadyState < handle
 						result = self.NRIteration(solver);
 					case {'FD', 'FDBX', 'FDXB'}	% PQ 分解法
 						result = self.PQIteration(solver);
-					% case 'FDBX'	% PQ 分解法
-					% 	result = self.PQIteration(solver);
-					% case 'FDXB'	% PQ 分解法
-					% 	result = self.PQIteration(solver);
 					otherwise
-						% TODO otherwise
 						error('illegal solver');
 				end
 
@@ -735,6 +743,63 @@ classdef SteadyState < handle
 			self.nodes.g = self.nodes.g + self.nodes.Pd./self.nodes.mag.^2;
 			self.nodes.b = self.nodes.b - self.nodes.Qd./self.nodes.mag.^2;
 			self.NAM.addAdmittance(1:length(self.nodes.id), (self.nodes.Pd - self.nodes.Qd.*1i)./self.nodes.mag.^2);
+		end
+
+		%% changeLoadCapacity: 改变所有负荷的容量
+		function changeLoadCapacity(self, rate)
+			self.nodes.Pd = self.nodes.Pd.*rate;
+			self.nodes.Qd = self.nodes.Qd.*rate;
+		end
+
+		%% changeLoadCapacity: 改变所有负荷有功
+		function changeLoadActiveCapacity(self, rate)
+			self.nodes.Pd = self.nodes.Pd.*rate;
+		end
+
+		%% changeLoadFactorPerDeg: 改变所有负荷的功率因数
+		function changeLoadFactorPerDeg(self, hysteresisDeg)
+			PM = [
+				cos(hysteresisDeg./180.*pi), -sin(hysteresisDeg./180.*pi);
+				sin(hysteresisDeg./180.*pi), cos(hysteresisDeg./180.*pi);
+			];
+			[self.nodes.Pd, self.nodes.Qd] = PM*[self.nodes.Pd, self.nodes.Qd];
+		end
+
+		%% getLoadFactor: 计算负荷的功率因数, 并返回负荷的性质(感性0, 容性1)
+		function [loadFactor, nature] = getLoadFactor(self)
+			loadFactor = ones(length(self.nodes.id), 1);
+			nature = zeros(length(self.nodes.id), 1);
+			loadFactor(self.loadIndex) = self.nodes.Pd(self.loadIndex)./sqrt((self.nodes.Pd(self.loadIndex) + self.nodes.g(self.loadIndex)).^2+(self.nodes.Qd(self.loadIndex) - self.nodes.b(self.loadIndex)).^2);
+			nature(self.loadIndex) = (self.nodes.Qd(self.loadIndex) - self.nodes.b(self.loadIndex) < 0);
+		end
+
+		%% compensateReactivePower: 对所有负荷使用调相机进行无功补偿,用于测试系统对负荷功率因数的反应.
+		% TODO add nodes.b
+		function compensateReactivePowerByCompensator(self, LF_obj)
+			tanphi_t = tan(acos(LF_obj));
+			[LF_org, LF_nat] = self.getLoadFactor();
+			% 不能使用 for k = self.loadIndex
+			for k = self.loadIndex'
+				if( (LF_org(k) < LF_obj) & (LF_nat(k) == 0) )
+					self.nodes.Qd(k) = (self.nodes.Pd(k) + self.nodes.g(k)).*tanphi_t + self.nodes.b(k);
+				end
+			end
+		end
+
+		%% compensateReactivePowerByCapacitance: 对所有负荷使用电容进行无功补偿,用于测试系统对负荷功率因数的反应.
+		% TODO add nodes.b
+		function compensateReactivePowerByCapacitance(self, LF_obj)
+			tanphi_t = tan(acos(LF_obj));
+			[LF_org,LF_nat] = self.getLoadFactor();
+			% 不能使用 for k = self.loadIndex
+			for k = self.loadIndex'
+				if( (LF_org(k) < LF_obj) & (LF_nat(k) == 0) )
+					comp_t = self.nodes.Qd(k) - self.nodes.b(k) - (self.nodes.Pd(k) + self.nodes.g(k)).*tanphi_t;	% 待补偿量
+					if 0 < comp_t
+						self.nodes.b(k) = self.nodes.b(k) + comp_t;
+					end
+				end
+			end
 		end
 
 		% getShortCircultCapacity: 计算单个节点的短路容量

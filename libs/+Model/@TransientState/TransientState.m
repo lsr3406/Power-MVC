@@ -74,7 +74,6 @@ classdef TransientState < handle
 			self.generator.Tq01 = mpc.gen(:, 9);			% 电机参数, 交轴开路暂态时间常数
 			self.generator.Tq02 = zeros(gensLength, 1);	% TODO 电机参数, 交轴开路次暂态时间常数
 
-
 			self.delta = [];
 			self.omega = [];
 			self.vot = [];
