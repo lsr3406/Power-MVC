@@ -36,7 +36,7 @@ classdef TransientState < handle
 			self.generator.id = (1:gensLength)';
 
 			self.generator.TJ = mpc.gen(:, 2);			% 转子时间常数
-			self.generator.D = zeros(gensLength, 1);	% 阻尼
+			self.generator.D = mpc.gen(:, 10);	% 阻尼
 
 			self.generator.Pm = zeros(gensLength, 1);		% 机械功率
 			self.generator.Pe = zeros(gensLength, 1);		% 电磁功率
@@ -340,7 +340,7 @@ classdef TransientState < handle
 
 		%% solveDiffEquation: 求解微分代数方程
 		function solveDiffEquation(self)
-			omega1 = (self.generator.Pm - self.generator.Pe) ./ self.generator.TJ;
+			omega1 = (self.generator.Pm - self.generator.Pe - self.generator.omega.*self.generator.D) ./ self.generator.TJ;
 			self.generator.omega = self.generator.omega + omega1 .* self.dt;
 			delta1 = self.generator.omegaBase .* (self.generator.omega - 1);
 			self.generator.delta = self.generator.delta + delta1 .* self.dt;

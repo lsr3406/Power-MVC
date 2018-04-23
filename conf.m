@@ -1,5 +1,5 @@
 %% conf: 基本配置信息
 function [config] = conf()
-	config.controller = 'Fault';
-	config.method = 'test9';
+	config.controller = 'TransientState';
+	config.method = 'testLD';
 end

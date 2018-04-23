@@ -8,18 +8,25 @@ classdef TransientState < handle
 		%% testLD: 大干扰稳定测试
 		function testLD(self)
 		
+			obj = 'case9';
+
 			ts = Model.TransientState();
-			ts.init(getMpcTransient());
+			ts.init(getMpcTransient(obj));
 
 			solver.diffSolver = 'default';	% 改进的欧拉法
 			solver.netSolver = 'default';		% 直接法
 			solver.dt = 0.001;	% 步长
 			solver.time = 2;
 
-			ts.solveLargeDisturbance(solver, getMpcSteady());
+			ts.solveLargeDisturbance(solver, getMpcSteady(obj));
+			self.drawWave(ts);
 
 			save('test.mat');
 
+		end
+
+		%% drawWave: 画功角曲线
+		function drawWave(self, ts)
 			figure()
 			subplot(231)
 			hold on

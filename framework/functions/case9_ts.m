@@ -8,9 +8,6 @@ function [mpc] = case9_ss()
 		1	42.78	0	0.146	0.0608	0.0969	0.0969	8.96	0.742	0;
 		2	12.80	0	0.8958	0.1198	0.8645	0.1969	6.00	0.535	0;
 		3	6.02	0	1.3125	0.1813	1.2578	0.2500	8.59	0.600	0;
-		% 1	42.78	0	0.146	0.146	0.0969	0.0969	8.96	0.742	0;
-		% 2	12.80	0	0.8958	0.8958	0.8645	0.8645	6.00	0.535	0;
-		% 3	6.02	0	1.3125	1.3125	1.2578	1.2578	8.59	0.600	0;
 	];
 
 	% 电网操作
@@ -20,10 +17,10 @@ function [mpc] = case9_ss()
 	mpc.operating(1).time = 0;
 	mpc.operating(1).nid = 7;
 	mpc.operating(1).ntype = 'f3';
-	mpc.operating(1).trZ = 1e-7;
+	mpc.operating(1).trZ = 1e-12;
 
 	% 线路 5-7 退出运行
-	mpc.operating(2).time = 0.08;
+	mpc.operating(2).time = 0.09;
 	mpc.operating(2).fid = 5;
 	mpc.operating(2).tid = 7;
 	mpc.operating(2).btype = 'break';
