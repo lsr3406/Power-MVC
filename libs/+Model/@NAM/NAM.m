@@ -1,8 +1,10 @@
 % 节点导纳矩阵
+% TODO 三角分解的设置
 classdef NAM < handle
 	
 	properties
 		value;
+		real;
 	end
 	properties (Dependent)
 		size;
@@ -11,13 +13,18 @@ classdef NAM < handle
 	methods
 
 		%% get.size: 大小
-		function [size] = get.size(self)
-			size = size(self.value);
+		function [sz] = get.size(self)
+			sz = size(self.value);
 		end
 
 		%% get: 返回节点导纳矩阵
 		function [value] = get(self)
 			value = self.value;
+		end
+
+		%% getReal: 返回节点导纳矩阵
+		function [value] = getReal(self)
+			value = self.real;
 		end
 
 		%% get: 设置节点导纳矩阵
@@ -30,6 +37,18 @@ classdef NAM < handle
 				assert(s(1) == s(2))
 				self.value = nam;
 			end
+		end
+
+		%% setReal: 设置节点导纳矩阵 2n 维实矩阵（内部转化）
+		function setReal(self)
+			n = self.size;
+			even = 2.*(1:n);
+			odd = even - 1;
+			self.real = sparse(2*n);
+			self.real(odd, odd) = real(self.value);
+			self.real(odd, even) = -imag(self.value);
+			self.real(even, odd) = imag(self.value);
+			self.real(even, even) = real(self.value);
 		end
 
 		%% addAdmittance: 向系统中某节点添加接地导纳, 返回新的节点导纳矩阵

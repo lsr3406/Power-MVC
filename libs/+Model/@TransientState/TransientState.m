@@ -38,6 +38,7 @@ classdef TransientState < handle
 			self.generator.TJ = mpc.gen(:, 2);			% 转子时间常数
 			self.generator.D = mpc.gen(:, 10);	% 阻尼
 
+			% self.generator.order = 2;
 			self.generator.Pm = zeros(gensLength, 1);		% 机械功率
 			self.generator.Pe = zeros(gensLength, 1);		% 电磁功率
 			self.generator.Udq = zeros(gensLength, 1);		% 定子电压(电机坐标系下)
@@ -107,8 +108,8 @@ classdef TransientState < handle
 			self.ss.init(mpcSteady);
 
 			%% 设置求解器的基本信息
-			solver.method = 'FDBX';	% 求解方法
-			solver.maxIteration = 30;	% 最大迭代
+			solver.method = 'NR';	% 求解方法
+			solver.maxIteration = 6;	% 最大迭代
 			solver.epsilon = 1e-5;	% 收敛判据, 功率不平衡量标幺
 			solver.start = 'default';	% 启动方式, default 为按发电机端电压起动
 
@@ -135,10 +136,10 @@ classdef TransientState < handle
 		end
 
 		%% setStatorStatus: 电压电流的机网转换
-		function [Udq, Idq] = setStatorStatus(self, Uxy, Ixy)
+		function [Udq, Idq] = setStatorStatus(self, Uxy, Ixy, delta)
 			% 下面的 self.generator.delta 是电机当前的功角, 注意这个接口只用于初值计算
-			Udq = Uxy.*exp((pi/2 - self.generator.delta).*1i);
-			Idq = Ixy.*exp((pi/2 - self.generator.delta).*1i);
+			Udq = Uxy.*exp((pi/2 - delta).*1i);
+			Idq = Ixy.*exp((pi/2 - delta).*1i);
 		end
 
 		%% setTransientPotential: 计算暂态电势
@@ -150,14 +151,39 @@ classdef TransientState < handle
 			self.generator.Ed1 = real(Udq) + self.generator.Ra .* real(Idq) - self.generator.Xq1 .* imag(Idq);
 		end
 
+		%% updateMagForce: Eq1, Ed1
+		% function updateMagForce(self)
+		% 	self.generator.Eq1 = imag(self.generator.Udq) + self.generator.Ra .* imag(self.generator.Idq) + self.generator.Xd1 .* real(self.generator.Idq);
+		% 	self.generator.Ed1 = real(self.generator.Udq) + self.generator.Ra .* real(self.generator.Idq) - self.generator.Xq1 .* imag(self.generator.Idq);
+		% end
+
 		%% setMechancialPower: 计算初始电磁功率
-		function setMechancialPower(self)
+		function setMechancialPower(self, Udq, Idq)
 			nid = self.ss.generator.nid;
 
 			self.generator.Pe = self.ss.nodes.Pg(getIndex(self.ss.nodes.id, nid)) + abs(self.generator.Ixy).^2 .* self.generator.Ra;
 			self.generator.Pm = self.generator.Pe;
 		end
 
+		%% net2Machine: 机网转换
+		function net2Machine(self)
+			self.generator.Udq = self.generator.Uxy.*exp((pi/2 - self.generator.delta).*1i);
+			self.generator.Idq = self.generator.Ixy.*exp((pi/2 - self.generator.delta).*1i);
+		end
+
+		%% getGeneratorAdmittance: 返回发电机在暂态过程中等效的导纳
+		function [YG1] = getGeneratorAdmittance(self)
+			den = self.generator.Ra.^2 + self.generator.Xd1.*self.generator.Xq1;
+			G = self.generator.Ra ./ den;
+			B = - 0.5.*(self.generator.Xd1 + self.generator.Xq1) ./ den;
+			YG1 = G + B.*1i;
+		end
+
+		%% addGenImpedanceToNodes: 迭代法计算网络方程，发电机入阵
+		function addGenImpedanceToNodes(self)
+			YG1 = self.getGeneratorAdmittance();
+			self.ss.NAM.addAdmittance(getIndex(self.ss.nodes.id, self.generator.nid), YG1);
+		end
 	
 		%% setTransientInitialValue: 大干扰稳定分析初值计算
 		function setTransientInitialValue(self, mpcSteady)
@@ -172,41 +198,45 @@ classdef TransientState < handle
 			self.setGeneratorCurrent();
 			self.setImaginaryPotential();
 			self.powerAngleInit();
-			[Udq, Idq] = self.setStatorStatus(self.generator.Uxy, self.generator.Ixy);	% 我们默认稳态运行时, 电角速度标幺值为 1
+			[Udq, Idq] = self.setStatorStatus(self.generator.Uxy, self.generator.Ixy, self.generator.delta);	% 我们默认稳态运行时, 电角速度标幺值为 1
 
 			% 6. 计算暂态电势
 			% 7. 计算初始电磁功率
 			self.setTransientPotential(Udq, Idq);
-			self.setMechancialPower();
+			self.setMechancialPower(Udq, Idq);
 
 			% 8. 电网稳态模型中负荷按恒阻抗归入节点导纳矩阵
 
 			self.ss.addLoadImpedanceToNodes();
-			self.ss.addGenImpedanceToNodes(self.generator);	% 发电机按经典模型计算时可以在这里归入节点导纳矩阵
+			% self.ss.addGenImpedanceToNodes(self.generator);	% 发电机按经典模型计算时可以在这里归入节点导纳矩阵
+			% self.addGenImpedanceToNodes();
 			% self.ss.addMoterImpedanceToNodes();
 
 			% debug 通过
-			% disp('发电机内电势, 功角: ');
-			% disp([self.generator.Eq, self.generator.Ed, self.generator.Eq1, self.generator.Ed1, self.generator.delta*180/pi]);
+			disp('发电机内电势, 功角: ');
+			disp([self.generator.Eq, self.generator.Ed, self.generator.Eq1, self.generator.Ed1, self.generator.delta*180/pi]);
 			% disp('发电机电压, 电流(网)')
 			% disp([abs(self.generator.Uxy), angle(self.generator.Uxy)*180/pi]);
 			% disp([abs(self.generator.Ixy), angle(self.generator.Ixy)*180/pi]);
 			% disp('发电机电压, 电流(机)')
 			% disp([abs(Udq), angle(Udq)*180/pi]);
 			% disp([abs(Idq), angle(Idq)*180/pi]);
-			% disp('机械功率: ')
-			% disp([self.generator.Pm]);
+			disp('机械功率: ')
+			disp([self.generator.Pm]);
 
 		end
 		
 		%% setData: 记录计算过程中得到的节点电压, 线路电流, 发电机功角
-		function setData(self)
+		function setData(self, Uxy, Ixy)
 			self.delta = [self.delta, self.generator.delta];
 			self.omega = [self.omega, self.generator.omega];
 
 			% debug
 			self.itlog.Pe = [self.itlog.Pe, self.generator.Pe];
 			self.itlog.Pm = [self.itlog.Pm, self.generator.Pm];
+
+			self.vot = [self.vot, Uxy];
+			self.cur = [self.cur, Ixy];
 		end
 
 		%% getStage: 返回当前时刻电网所处的阶段, 对应各个节点导纳矩阵
@@ -313,96 +343,225 @@ classdef TransientState < handle
 					self.NAM.removeLine(self.branches.fid(k), self.branches.tid(k), self.ss.branches.r(index) + self.ss.branches.x(index)*1i, self.ss.branches.g(index) + self.ss.branches.b(index)*1i);
 				end
 			end
-			
 		end
 
 		%% param_gb: 网络方程求解需要用到的参数
-		function [gxby, bxgy] = param_gb(self)
-			den = self.generator.Ra.^2 + self.generator.Xd1.*self.generator.Xq;
-			gx = (self.generator.Ra.*sin(self.generator.delta) - self.generator.Xd1.*cos(self.generator.delta))./den;
-			gy = (self.generator.Ra.*sin(self.generator.delta) - self.generator.Xq.*cos(self.generator.delta))./den;
-			bx = (self.generator.Ra.*cos(self.generator.delta) + self.generator.Xq.*sin(self.generator.delta))./den;
-			by = (-self.generator.Ra.*cos(self.generator.delta) - self.generator.Xd1.*sin(self.generator.delta))./den;
-			gxby = gx + by .* 1i;
-			bxgy = bx + gy .* 1i;
+		function [array] = param_gb(self, delta)
+			den = self.generator.Ra.^2 + self.generator.Xd1.*self.generator.Xq1;
+			gx = (self.generator.Ra.*sin(delta) - self.generator.Xd1.*cos(delta))./den;
+			gy = (self.generator.Ra.*sin(delta) - self.generator.Xq1.*cos(delta))./den;
+			bx = (self.generator.Ra.*cos(delta) + self.generator.Xq1.*sin(delta))./den;
+			by = (-self.generator.Ra.*cos(delta) - self.generator.Xd1.*sin(delta))./den;
+			array = [gx, bx, by, gy];
 		end
 
-		%% param_GB: 网络方程求解需要用到的参数
-		function [GxBy, BxGy] = param_GB(self)
-			den = self.generator.Ra.^2 + self.generator.Xd1.*self.generator.Xq;
-			Gx = (self.generator.Ra - 0.5.*(self.generator.Xd1-self.generator.Xq).*sin(2*self.generator.delta))./den;
-			Gy = (self.generator.Ra + 0.5.*(self.generator.Xd1-self.generator.Xq).*sin(2*self.generator.delta))./den;
-			Bx = (self.generator.Xd1.*cos(self.generator.delta).^2 + self.generator.Xq.*sin(self.generator.delta).^2)./den;
-			By = (-self.generator.Xd1.*sin(self.generator.delta).^2 - self.generator.Xq.*cos(self.generator.delta).^2)./den;
-			GxBy = Gx + By .* 1i;
-			BxGy = Bx + Gy .* 1i;
+		% param_GB: 网络方程求解需要用到的参数
+		function [array] = param_GB(self, delta)
+			den = self.generator.Ra.^2 + self.generator.Xd1.*self.generator.Xq1;
+			Gx = (self.generator.Ra - 0.5.*(self.generator.Xd1-self.generator.Xq1).*sin(2.*delta))./den;
+			Gy = (self.generator.Ra + 0.5.*(self.generator.Xd1-self.generator.Xq1).*sin(2.*delta))./den;
+			Bx = (0.5.*(self.generator.Xd1+self.generator.Xq1) + 0.5.*(self.generator.Xd1-self.generator.Xq1).*cos(2.*delta))./den;
+			By = (-0.5.*(self.generator.Xd1+self.generator.Xq1) + 0.5.*(self.generator.Xd1-self.generator.Xq1).*cos(2.*delta))./den;
+			array = [Gx, Bx, By, Gy];
 		end
 
-		%% solveDiffEquation: 求解微分代数方程
-		function solveDiffEquation(self)
-			omega1 = (self.generator.Pm - self.generator.Pe - self.generator.omega.*self.generator.D) ./ self.generator.TJ;
-			self.generator.omega = self.generator.omega + omega1 .* self.dt;
-			delta1 = self.generator.omegaBase .* (self.generator.omega - 1);
-			self.generator.delta = self.generator.delta + delta1 .* self.dt;
+		%% calcElectricMagneticPower: 计算电磁功率
+		function [Pe] = calcElectricMagneticPower(self, Uxy, Ixy)
+			% index = getIndex(self.ss.nodes.id, self.generator.nid);
+			Pe = real(Uxy .* conj(Ixy)) + abs(Ixy).^2 .* self.generator.Ra;
+		end
+
+		%% stepForward: 求解微分代数方程
+		function [omega1, delta1] = stepForward(self, Uxy, Ixy)
+			
+			self.generator.Pe = self.calcElectricMagneticPower(Uxy, Ixy);
+			omega1 = (self.generator.Pm - self.generator.Pe - (self.generator.omega-1).*self.generator.D) ./ self.generator.TJ;
+			% self.generator.omega = self.generator.omega + omega1 .* self.dt;
+			delta1 = self.generator.omegaBase .* (self.generator.omega + omega1 .* self.dt./2 - 1);
+			% self.generator.delta = self.generator.delta + delta1 .* self.dt;
+		end
+
+		%% getBlockForNAM: 向节点导纳矩阵实矩阵中叠加一个分块
+		function [blk] =  getBlockForNAM(self, pos, param_GB)
+			odd = 2.*pos - 1;
+			even = 2.*pos;
+			blk = sparse(2.*length(self.ss.nodes.id), 2.*length(self.ss.nodes.id));
+			blk(odd, odd) = diag(param_GB(:, 1));
+			blk(odd, even) = diag(param_GB(:, 2));
+			blk(even, odd) = diag(param_GB(:, 3));
+			blk(even, even) = diag(param_GB(:, 4));
 		end
 
 		%% solveNetEquation: 求解网络方程
-		function solveNetEquation(self, stage)
+		function [Uxy, Ixy] = solveNetEquation(self, net, delta)
+			index = getIndex(self.ss.nodes.id, self.generator.nid);
+			n = self.NAM.size();
+			odd = (2.*(1:n) - 1)';
+			even = (2.*(1:n))';
+			param_GB = self.param_GB(delta);
+
+			% 计算暂态电动势与注入电流
+			I = zeros(2.*n);
 			
-			% 1. 忽略阻尼绕组, 求解发电机的虚拟注入电流
-			[gxby, bxgy] = self.param_gb();
-			[GxBy, BxGy] = self.param_GB();
+			% Exy = (self.generator.Ed1 + self.generator.Eq1.*1i).*exp(-(pi./2 - delta).*1i);
+			Exy = (self.generator.Eq1.*1i).*exp(-(pi./2 - delta).*1i);
+			I(odd(index)) = param_GB(:, 1).*real(Exy) + param_GB(:, 2).*imag(Exy);
+			I(even(index)) = param_GB(:, 3).*real(Exy) + param_GB(:, 4).*imag(Exy);
 
-			Ixy1 = bxgy .* self.generator.Eq1;
-			% Ixy1 = (gxby .* self.generator.Ed1 + bxgy .* self.generator.Eq1);
+			% 根据发电机的运行参数，修改导纳矩阵
+			blk = self.getBlockForNAM(index, param_GB);
 
-			% 2. 求解节点电压方程
-			I = zeros(length(self.ss.nodes.id), 1);
-			index = getIndex(self.ss.nodes.id, self.generator.nid);	% 发电机节点索引
-			I(index) = Ixy1;
+			% 求解节点电压方程
+			U = (self.NAM.real + blk) \ I;
+			Uxy = U(odd) + U(even).*1i;
 
-			U = self.NAM.get() \ (I);
+			Ut = Exy - Uxy(index);
+			I(odd(index)) = param_GB(:, 1).*real(Ut) + param_GB(:, 2).*imag(Ut);
+			I(even(index)) = param_GB(:, 3).*real(Ut) + param_GB(:, 4).*imag(Ut);
+			Ixy = I(odd) + I(even).*1i;
 
-			% 3. 求解发电机的注入电流
-			self.generator.Uxy = U(index);
-			self.generator.Ixy = Ixy1 - GxBy .* real(self.generator.Uxy) - BxGy .* imag(self.generator.Uxy);
-
-			% 4. 计算电磁功率
-			% self.generator.Pe = real(self.generator.Uxy .* conj(self.generator.Ixy)) + abs(self.generator.Ixy).^2 .* self.generator.Ra;
-			self.generator.Pe = (abs(self.generator.Ed1 + 1i.*self.generator.Eq1) .* abs(self.generator.Uxy))./self.generator.Xd1.*sin(self.generator.delta - angle(self.generator.Uxy));
-
-			% debug
-			self.vot = [self.vot, U];
-			self.cur = [self.cur, I];
 		end
-		
+
+		% %% solveNetEquation: 网络方程
+		% function [Uxy, Ixy] = solveNetEquation(self, net, delta)
+
+		% 	index = getIndex(self.ss.nodes.id, self.generator.nid);
+		% 	[GxBy, BxGy] = self.param_GB();
+
+		% 	% 1. 计算两个电流源， 一个定常一个时变， 确定注入电流
+		% 	% YG1 = self.getGeneratorAdmittance();
+		% 	Exy = (self.generator.Eq1.*1i).*exp(-(pi./2 - delta).*1i);
+
+		% 	% 2. 计算节点电压方程(迭代)
+		% 	Ixy = zeros(length(self.ss.nodes.id), 1);
+		% 	Uxy = zeros(length(self.ss.nodes.id), 1);
+			
+		% 	Uxy(index) = GUxy;
+		% 	Uxy_prev = zeros(length(self.generator.Uxy), 1);
+		% 	k = 0;
+		% 	while max(abs(Uxy(index) - Uxy_prev)) > 0.001 && k < 10
+		% 		Uxy_prev = Uxy(index);
+		% 		Utemp = Exy - Uxy(index);
+		% 		Ixy(index) = GxBy.*real(Utemp) + BxGy.*imag(Utemp);
+		% 		Uxy = self.NAM.get() \ Ixy;
+		% 		Uxy(index) = (Uxy(index) + Uxy_prev)./2;
+		% 		k = k + 1;
+		% 	end
+		% 	% if k ~= 0
+		% 	% 	disp(k);
+		% 	% end
+		% 	if any(abs(Uxy) >= 1.5)
+		% 		save('debug.mat');
+		% 		error('debug');
+		% 	end
+		% end
+
+		% %% solveNetEquation: 求解网络方程
+		% function solveNetEquation(self, stage)
+			
+		% 	% 1. 忽略阻尼绕组, 求解发电机的虚拟注入电流
+		% 	[gxby, bxgy] = self.param_gb();
+		% 	[GxBy, BxGy] = self.param_GB();
+
+		% 	Ixy1 = bxgy .* self.generator.Eq1;
+		% 	% Ixy1 = (gxby .* self.generator.Ed1 + bxgy .* self.generator.Eq1);
+
+		% 	% 2. 求解节点电压方程
+		% 	I = zeros(length(self.ss.nodes.id), 1);
+		% 	index = getIndex(self.ss.nodes.id, self.generator.nid);	% 发电机节点索引
+		% 	I(index) = Ixy1;
+
+		% 	U = self.NAM.get() \ (I);
+
+		% 	% 3. 求解发电机的注入电流
+		% 	self.generator.Uxy = U(index);
+		% 	self.generator.Ixy = Ixy1 - GxBy .* real(self.generator.Uxy) - BxGy .* imag(self.generator.Uxy);
+		% 	self.net2Machine();
+		% 	% self.updateMagForce();
+
+		% 	% 4. 计算电磁功率
+		% 	% self.generator.Pe = (self.generator.Eq1 .* abs(self.generator.Uxy))./self.generator.Xd1.*sin(self.generator.delta - angle(self.generator.Uxy));
+		% 	% self.generator.Pe = (abs(self.generator.Ed1 + 1i.*self.generator.Eq1) .* abs(self.generator.Uxy))./self.generator.Xd1.*sin(self.generator.delta - angle(self.generator.Uxy));
+		% 	% self.generator.Pe = real(self.generator.Uxy .* conj(self.generator.Ixy)) + abs(self.generator.Ixy).^2 .* self.generator.Ra;
+		% 	self.generator.Pe = self.generator.Eq1.* imag(self.generator.Idq) - (self.generator.Xd1 - self.generator.Xq).*real(self.generator.Idq).*imag(self.generator.Idq);
+
+		% 	% debug
+		% 	self.vot = [self.vot, U];
+		% 	self.cur = [self.cur, I];
+		% end
+
+		%% solveStep: 求解一步
+		function [stable] = solveStep(self, dae, net, t)
+			
+			index = getIndex(self.ss.nodes.id, self.generator.nid);
+			switch dae
+				case {'euler', 'Euler'}
+					% [Uxy, Ixy] = self.solveNetEquation(net, self.generator.delta);
+					[omega1, delta1] = self.stepForward(self.generator.Uxy, self.generator.Ixy);
+					[Uxy, Ixy] = self.solveNetEquation(net, self.generator.delta + delta1.*self.dt);
+					[omega2, delta2] = self.stepForward(Uxy(index), Ixy(index));
+
+					self.generator.omega = self.generator.omega + (omega1 + omega2)./2.*self.dt;
+					self.generator.delta = self.generator.delta + (delta1 + delta2)./2.*self.dt;
+					[Uxy, Ixy] = self.solveNetEquation(net, self.generator.delta);
+					self.generator.Uxy = Uxy(index);
+					self.generator.Ixy = Ixy(index);
+				otherwise
+					error('illegal dae method');
+			end
+
+			self.setData(Uxy, Ixy);
+
+			if ~self.isStable()
+				warning(['Transient instability occurs at ', num2str(t), 's.']);
+				stable = false;
+				return;
+			end
+			stable = true;
+		end
+
+		%% checkStage: 根据当前时间选择性更新网络状态
+		function [stage] = checkStage(self, t, stagePrev, solver)
+			self.time = t;
+			stage = self.getStage(t);
+			% 系统状态发生了变化
+			if stage ~= stagePrev
+				self.setTransientData(stage, solver);
+				self.setTransientNAM();
+				self.NAM.setReal();	% 不用直接法求网络方程可以去掉
+				% 求解网络方程
+				[Uxy, Ixy] = self.solveNetEquation(solver.net, self.generator.delta);
+				self.generator.Uxy = Uxy(getIndex(self.ss.nodes.id, self.generator.nid));
+				self.generator.Ixy = Ixy(getIndex(self.ss.nodes.id, self.generator.nid));
+			end
+		end
+
+		%% isStable: 判断电力系统当前是否稳定
+		function [stable] = isStable(self)
+			stable = range(self.generator.delta) < pi;
+		end
+
 		%% solveLargeDisturbance: 电力系统大干扰分析
 		function solveLargeDisturbance(self, solver, mpcSteady)
 
 			% 1. 初值计算
 			self.setTransientInitialValue(mpcSteady);
 
-			% 2. 网络方程的求解, 微分代数方程的数值积分, 系统状态改变时更新相应的节点导纳矩阵
+			% 2. 
 			self.setTimeAndStep(solver.time, solver.dt);
+
+			% 3. 网络方程的求解, 微分代数方程的数值积分, 系统状态改变时更新相应的节点导纳矩阵
 			stagePrev = 0;
 			for t = self.ct
-
-				self.time = t;
-				stage = self.getStage(t);
-				% 系统状态发生了变化
-				if stage ~= stagePrev
-					self.setTransientData(stage, solver);
-					self.setTransientNAM();
-					stagePrev = stage;
+				stagePrev = self.checkStage(t, stagePrev, solver);
+				stable = self.solveStep(solver.dae, solver.net, t);
+				
+				if ~stable
+					return;
 				end
-
-				self.solveNetEquation(stage);
-				self.solveDiffEquation();
-				self.setData();
-
 			end
+
 		end
 
 	end
-
 end

@@ -1,4 +1,3 @@
-
 %% SteadyState
 classdef SteadyState < handle
 	properties
@@ -288,7 +287,204 @@ classdef SteadyState < handle
 			legend('节点 1', '节点 2', '节点 3', '节点 4', '节点 5', '节点 6', '节点 7', '节点 8', '节点 9');
 			axis([0, (s(2) - 1), -9, 1])	% 坐标范围	x:[0, (s(2) - 1)] 	y:[-9, 1]
 		end
+
+		%% test_ly: 
+		function test_ly(self)
+
+			%% 设置求解器的基本信息
+			solver.method = 'NR';	% 求解方法
+			solver.maxIteration = 10;	% 最大迭代
+			solver.epsilon = 1e-5;	% 收敛判据, 功率不平衡量标幺
+
+			% 建立电力网稳态模型并初始化
+			obj = 'case30';
+			ss = Model.SteadyState();
+
+			%% 设置参数（有功，电阻）
+			% p 是与负荷的有功功率相关的系数
+			param_p = 0.8:0.1:1.2;
+			param_q = 0.8:0.1:1.2;
+
+			% node id = 30
+			U = zeros(length(param_p), length(param_q));
+			theta = zeros(length(param_p), length(param_q));
+			for k1 = 1:length(param_p)
+				% disp(['param_p = ', num2str(param_p(k1))]);
+				for k2 = 1:length(param_q)
+					% 每次测试前先初始化
+					ss.init(getMpcSteady(obj));
+					% 调参数
+					ss.nodes.Pd = ss.nodes.Pd .* param_p(k1);
+					ss.generator.Pg = ss.generator.Pg .* param_p(k1);
+					ss.nodes.Qd = ss.nodes.Qd .* param_q(k2);
+					ss.generator.Qg = ss.generator.Qg .* param_q(k2);
+
+					%% 求解
+					result = ss.solvePowerFlow(solver);
+					U(k1, k2) = ss.nodes.mag(30);
+					theta(k1, k2) = ss.nodes.ang(30).*180./pi;
+				end
+
+			end
+			% save('ly.mat');	% 留作测试
+			figure()
+			subplot(1, 2, 1);
+				hold on;
+				grid on;
+				contourf(param_p, param_q, U);
+				set(get(gca,'XLabel'),'String','p');
+				set(get(gca,'YLabel'),'String','q');
+				title('电压');
+				% set(get(gca,'XTickLabel'),{'xTick1','xTick2','xTick3'});
+				% legend('leg1','leg2','leg3');
+				% gtext('gt1','gt2','gt3');
+			subplot(1, 2, 2);
+				hold on;
+				grid on;
+				contourf(param_p, param_q, theta);
+				set(get(gca,'XLabel'),'String','p');
+				set(get(gca,'YLabel'),'String','q');
+				title('相角');
+				% set(get(gca,'XTickLabel'),{'xTick1','xTick2','xTick3'});
+				% legend('leg1','leg2','leg3');
+				% gtext('gt1','gt2','gt3');
+
+		end
 		
+		%% test_yq: 
+		function test_yq(self)
+
+			step = 0.1;
+			x = 1:-step:-1;
+			p = 64.^x;
+			q = p;
+			p = 2;
+			q = 2;
+			ploss = zeros(length(p));	% n*n matrix
+			qloss = zeros(length(p));	% n*n matrix
+			votage1 = zeros(length(p));
+			votage2 = zeros(length(p));
+			votage3 = zeros(length(p));
+			votage4 = zeros(length(p));
+
+			% 建立电力网稳态模型并初始化
+			objMain = 'case39';
+			objApp = 'case34';
+
+			ssMain = Model.SteadyState();
+			ssApp1 = Model.SteadyState();
+			ssApp2 = Model.SteadyState();
+			ssApp3 = Model.SteadyState();
+			ssApp4 = Model.SteadyState();
+
+			%% 设置求解器的基本信息
+			solver.method = 'NR';	% 求解方法
+			solver.maxIteration = 10;	% 最大迭代
+			solver.epsilon = 1e-4;	% 收敛判据, 功率不平衡量标幺
+			solver.start = '';	% 启动方式, default 为按发电机端电压起动
+
+			epsilon = 1e-5;
+
+			for k1 = 1:length(p)
+				for k2 = 1:length(q)
+					% fprintf('%s', ['p = ', num2str(p(k1)), '  q = ', num2str(q(k2)), '  ']);
+
+					ssMain.init(getMpcSteady(objMain));
+					ssApp1.init(getMpcSteady(objApp));
+					ssApp2.init(getMpcSteady(objApp));
+					ssApp3.init(getMpcSteady(objApp));
+					ssApp4.init(getMpcSteady(objApp));
+					% 设置配电网功率
+					ssApp1.nodes.Pd = ssApp1.nodes.Pd .* p(k1);
+					ssApp1.nodes.Qd = ssApp1.nodes.Qd .* q(k2);
+					ssApp2.nodes.Pd = ssApp2.nodes.Pd .* p(k1);
+					ssApp2.nodes.Qd = ssApp2.nodes.Qd .* q(k2);
+					ssApp3.nodes.Pd = ssApp3.nodes.Pd .* p(k1);
+					ssApp3.nodes.Qd = ssApp3.nodes.Qd .* q(k2);
+					ssApp4.nodes.Pd = ssApp4.nodes.Pd .* p(k1);
+					ssApp4.nodes.Qd = ssApp4.nodes.Qd .* q(k2);
+
+					it = 0;
+					dp = 0;
+					dq = 0;
+					dp_prev = inf;
+					dq_prev = inf;
+					while it < 20 && max(abs(dp - dp_prev), abs(dq - dq_prev)) > epsilon
+						dp_prev = dp;
+						dq_prev = dq;
+
+						% 添加网损
+						ssMain.nodes.Pd(40:43) = ssMain.nodes.Pd(40:43) + dp - dp_prev;
+						ssMain.nodes.Qd(40:43) = ssMain.nodes.Qd(40:43) + dq - dq_prev;
+						% 先计算主网，获取配网平衡节点电压
+						resMain = ssMain.solvePowerFlow(solver);
+						if resMain.status ~= 1
+							dp = nan;dq = nan;break;
+						end
+
+						swingVotage = ssMain.nodes.mag(40:43)
+
+						% 设置配网平衡节点电压
+						ssApp1.nodes.mag(28) = swingVotage(1);
+						ssApp2.nodes.mag(28) = swingVotage(2);
+						ssApp3.nodes.mag(28) = swingVotage(3);
+						ssApp4.nodes.mag(28) = swingVotage(4);
+
+						% 计算配网潮流
+						resApp1 = ssApp1.solvePowerFlow(solver);
+						if resApp1.status ~= 1
+							dp = nan;dq = nan;break;
+						end
+						resApp2 = ssApp2.solvePowerFlow(solver);
+						if resApp2.status ~= 1
+							dp = nan;dq = nan;break;
+						end
+						resApp3 = ssApp3.solvePowerFlow(solver);
+						if resApp3.status ~= 1
+							dp = nan;dq = nan;break;
+						end
+						resApp4 = ssApp4.solvePowerFlow(solver);
+						if resApp4.status ~= 1
+							dp = nan;dq = nan;break;
+						end
+
+						% 获取配网损耗
+						dp1 = sum(ssApp1.branches.dP);
+						dq1 = sum(ssApp1.branches.dQ);
+						dp2 = sum(ssApp2.branches.dP);
+						dq2 = sum(ssApp2.branches.dQ);
+						dp3 = sum(ssApp3.branches.dP);
+						dq3 = sum(ssApp3.branches.dQ);
+						dp4 = sum(ssApp4.branches.dP);
+						dq4 = sum(ssApp4.branches.dQ);
+
+						dp = sum([dp1, dp2, dp3, dp4]);
+						dq = sum([dq1, dq2, dq3, dq4]);
+						it = it + 1;
+					end
+					% fprintf('%s', ['k = ', num2str(it), '  ']);
+					% fprintf('\n');
+					% 记录 dp, dq 
+					ploss(k1, k2) = dp.*100;
+					qloss(k1, k2) = dq.*100;
+					votage1(k1, k2) = ssApp1.nodes.mag(28);
+					votage2(k1, k2) = ssApp2.nodes.mag(28);
+					votage3(k1, k2) = ssApp3.nodes.mag(28);
+					votage4(k1, k2) = ssApp4.nodes.mag(28);
+
+					% 找边界
+					% if(~isnan(dp))
+					% 	break;
+					% end
+				end
+				save('yq.mat')
+			end
+
+
+
+			%% 求解
+			
+		end
 	end
 end
 

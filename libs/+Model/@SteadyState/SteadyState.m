@@ -18,6 +18,8 @@ classdef SteadyState < handle
 
 		magStep;
 		angStep;
+
+		shuntFlag;
 	end
 	properties (Dependent)
 		pqIndex;		% pq 节点索引
@@ -189,9 +191,11 @@ classdef SteadyState < handle
 			self.FDM1 = [];
 			self.FDM2 = [];
 
+			self.shuntFlag = false;
+
 			% Mar 21 2018	设立节点电压 x, y分量, 用于机网转换
-			self.nodes.Ux = zeros(nodesLength, 1);
-			self.nodes.Uy = zeros(nodesLength, 1);
+			% self.nodes.Ux = zeros(nodesLength, 1);
+			% self.nodes.Uy = zeros(nodesLength, 1);
 		end
 
 		%% getNodeData: 生成节点参数, 主要是带有独立导纳设备的节点参数
@@ -286,9 +290,9 @@ classdef SteadyState < handle
 			elseif it >= solver.maxIteration
 				warning('Exception 101: Number of iterations exceeds the limit');
 				status = 101;	% 迭代次数超出上限
-			elseif any(self.nodes.mag > 2.5) || any(self.nodes.mag < 0.4)
-				warning('Exception 102: Some node have abnormal voltages and iteration is terminated');
-				status = 102;	% 部分节点电压不正常
+			% elseif any(self.nodes.mag > 2.5) || any(self.nodes.mag < 0.4)
+			% 	warning('Exception 102: Some node have abnormal voltages and iteration is terminated');
+			% 	status = 102;	% 部分节点电压不正常
 			else
 				self.magStep = min(max(1.0 + 0.12.*log10(abs(self.nodes.dQ([self.pqIndex]))), 0.05), 0.9);
 				self.angStep = min(max(1.0 + 0.12.*log10(abs(self.nodes.dP([self.pqIndex; self.pvIndex]))), 0.05), 0.9);
@@ -473,10 +477,15 @@ classdef SteadyState < handle
 		% @return complex Sij      从起始节点到终止节点的复功率, 标幺值
 		% @return complex Sji      从终止节点到起始节点的复功率, 标幺值
 		% @return complex dS       线路中的损耗, 但线路充电电容的影响也考虑了进去. 标幺值
-		function [Sij,Sji,dS] = getLinePower(self, index)
+		function [Sij,Sji,dS] = getLinePower(self, index, shuntFlag)
 			%　计算三个导纳值，计算功率时会用到
-			conjYi0 = conj((self.branches.g(index)+self.branches.b(index)*1i)./2);
-			conjYj0 = conjYi0;
+			if shuntFlag
+				conjYi0 = conj((self.branches.g(index)+self.branches.b(index)*1i)./2);
+				conjYj0 = conjYi0;
+			else
+				conjYi0 = 0;
+				conjYj0 = 0;
+			end
 			conjYij = 1./conj((self.branches.r(index)+self.branches.x(index)*1i));
 
 			fid = find(self.nodes.id == self.branches.fid(index));	% 得到线路始末端节点的id
@@ -493,12 +502,17 @@ classdef SteadyState < handle
 		% @return complex Sij      从起始节点到终止节点的复功率, 标幺值
 		% @return complex Sji      从终止节点到起始节点的复功率, 标幺值
 		% @return complex dS       线路中的损耗, 但线路充电电容的影响也考虑了进去. 标幺值
-		function [Sij,Sji,dS] = getTransformerPower(self, index)
+		function [Sij,Sji,dS] = getTransformerPower(self, index, shuntFlag)
 			%　首先确定变压器　pi 型等效电路的三个参数
 			[trZ, trY1, trY2] = gamma2pi((self.branches.r(index)+self.branches.x(index)*1i), (self.branches.g(index)+self.branches.b(index)*1i), self.branches.ratio(index));
 			%　计算三个导纳值，计算功率时会用到
-			conjYi0 = conj(trY1) - (self.branches.g(index)+self.branches.b(index)*1i)./2;
-			conjYj0 = conj(trY2) - (self.branches.g(index)+self.branches.b(index)*1i)./2;
+			if shuntFlag
+				conjYi0 = conj(trY1) - (self.branches.g(index)+self.branches.b(index)*1i)./2;
+				conjYj0 = conj(trY2) - (self.branches.g(index)+self.branches.b(index)*1i)./2;
+			else
+				conjYi0 = 0;
+				conjYj0 = 0;
+			end
 			conjYij = conj(1./trZ);
 
 			fid = find(self.nodes.id == self.branches.fid(index));	% 得到线路始始端节点的id
@@ -513,15 +527,20 @@ classdef SteadyState < handle
 		%% setBranchPower: 计算线路功率及功率损耗
 		%  该方法在潮流迭代结束之后再使用, 用于求解收敛时电力网中各线路传输的功率, 求解完成后更新电力网 branches 字段的相应属性
 		% @return void
-		function setBranchPower(self)
+		function setBranchPower(self, shuntFlag)
+
+			if nargin == 1
+				shuntFlag = false;
+			end
+
 			Sij = zeros(length(self.branches.id), 1);
 			Sji = zeros(length(self.branches.id), 1);
 			dS = zeros(length(self.branches.id), 1);
 			for k = 1:length(self.branches.id)
 				if self.isLine(k)
-					[Sij(k), Sji(k), dS(k)] = self.getLinePower(k);
+					[Sij(k), Sji(k), dS(k)] = self.getLinePower(k, shuntFlag);
 				else
-					[Sij(k), Sji(k), dS(k)] = self.getTransformerPower(k);
+					[Sij(k), Sji(k), dS(k)] = self.getTransformerPower(k, shuntFlag);
 				end	
 			end
 			self.branches.Pij = real(Sij);
@@ -708,7 +727,7 @@ classdef SteadyState < handle
 				fprintf('continue\n');
 			end
 
-			self.setBranchPower();	% 根据迭代结果计算线路功率及损耗, 结果记录到 branches 属性中
+			self.setBranchPower(self.shuntFlag);	% 根据迭代结果计算线路功率及损耗, 结果记录到 branches 属性中
 			self.setConpensatorPower();	% 根据迭代结果计算各节点对地电容功率, 结果记录到 nodes 属性中
 			% self.setVotageRealAndImag();	% 若需要作后续暂态分析, 可以做这一步的电压转化
 		end
