@@ -8,7 +8,7 @@ classdef Fault < handle
 		%% testF: 故障测试
 		function testF(self)
 		
-			obj = 'case9';
+			obj = 'lgq_eg8_1';
 			ft = Model.Fault();
 			ft.init(getMpcFault(obj));
 
@@ -16,7 +16,7 @@ classdef Fault < handle
 			res = ft.solveFault(solver, getMpcSteady(obj));
 
 			viewModel = View.Plain();
-			config.fileName = ['report_fault_', obj, '.txt'];
+			config.documentName = ['report_fault_', obj, '.txt'];
 			viewModel.getFaultReport(ft, config, res);
 
 			% debug
@@ -33,7 +33,7 @@ classdef Fault < handle
 			solver = [];
 			res = ft.solveFault(solver, getMpcSteady(obj));
 
-			self.drawNetStatus(ft.nodes);
+			self.drawNetStatus(ft.bus);
 			self.strokeFaultStatus(ft);
 
 			viewModel = View.Plain();
@@ -54,7 +54,7 @@ classdef Fault < handle
 			solver = [];
 			res = ft.solveFault(solver, getMpcSteady(obj));
 
-			self.drawNetStatus(ft.nodes);
+			self.drawNetStatus(ft.bus);
 			self.strokeFaultStatus(ft);
 
 			viewModel = View.Plain();
@@ -84,7 +84,7 @@ classdef Fault < handle
 			Ib = [];
 			Ic = [];
 			for k = 1:length(zn_param)
-				ft.branches.xn = ones(length(ft.branches.xn), 1).*zn_list(k);
+				ft.branch.xn = ones(length(ft.branch.xn), 1).*zn_list(k);
 				ft.solveFault([], mpcSteady);
 
 				Ua = [Ua; ft.itlog.Ufa];
@@ -127,12 +127,12 @@ classdef Fault < handle
 		end
 
 		%% drawNetStatus: 画电网的电压分布
-		function drawNetStatus(self, nodes)
-			maxU = (max(abs([nodes.Ua; nodes.Ub; nodes.Uc; 1])));
+		function drawNetStatus(self, bus)
+			maxU = (max(abs([bus.Ua; bus.Ub; bus.Uc; 1])));
 			figure();
 				polar(0, maxU);
 				hold on;
-				self.strokePhaseArrow(nodes.Ua, nodes.Ub, nodes.Uc, 1, 1.5);
+				self.strokePhaseArrow(bus.Ua, bus.Ub, bus.Uc, 1, 1.5);
 				title('电网电压分布图');
 		end
 

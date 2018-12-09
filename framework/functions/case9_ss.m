@@ -20,12 +20,9 @@ function [mpc] = case9_ss()
 	% Generator(nodeId,Pg,Qg,Qmax,Qmin,Vg,mBase,status,Pmax,Pmin)
 	mpc.gen = [
 
-		1	71.64	27.05	999	-999	1	100	1	999	-999;
-		2	163.0	6.665	999	-999	1	100	1	999	-999;
-		3	85.00	-10.86	999	-999	1	100	1	999	-999;
-
-		% 教材数据
-		% 3	20	0	30	-30	1.05	100	1	40	0	0	0	0	0	0	0	0	0	0	0	0;
+		1	71.64	27.05	300	-300	1	100	1	250	-10;
+		2	163.0	6.665	300	-300	1	100	1	300	-10;
+		3	85.00	-10.86	300	-300	1	100	1	270	-10;
 	];
 
 	% Branches(from, to, r, x, b, rateA, rateB, rateC, ratio, angle, status, angmin, angmax)

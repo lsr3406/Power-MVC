@@ -13,8 +13,8 @@ classdef NAM < handle
 	methods
 
 		%% get.size: 大小
-		function [sz] = get.size(self)
-			sz = size(self.value);
+		function [res] = get.size(self)
+			res = size(self.value);
 		end
 
 		%% get: 返回节点导纳矩阵
@@ -135,7 +135,7 @@ classdef NAM < handle
 			lineTo = lineData(:, 2);
 			lineImpedance = lineData(:, 3) + lineData(:, 4).*1i;
 			lineAdmittance = lineData(:, 5) + lineData(:, 6).*1i;
-			ratio = lineData(:, 7).*exp(i.*lineData(:, 8));
+			ratio = lineData(:, 7).*exp(1i.*lineData(:, 8));
 
 			% 节点参数, 主要是带有独立导纳设备的节点参数, 直接来自稳态模型的属性
 			nodeData_size = size(nodeData);
@@ -161,6 +161,64 @@ classdef NAM < handle
 			end
 
 			% 遍历所有的节点
+			self.addAdmittance(1:nodeData_size, nodeAdmittance_dep);
+		end
+
+		%% generateTrans: 生成一个秩为 n-1 的节点导纳矩阵, 去掉了所有的对地支路的影响
+		function generateTrans(self, nodeData, lineData)
+
+			lineDataSize = size(lineData);
+			lineDataSize = lineDataSize(1);
+
+			lineFrom = lineData(:, 1);
+			lineTo = lineData(:, 2);
+			lineImpedance = lineData(:, 3) + lineData(:, 4).*1i;
+			lineAdmittance = lineData(:, 5) + lineData(:, 6).*1i;
+			ratio = lineData(:, 7).*exp(i.*lineData(:, 8));
+
+			nodeData_size = size(nodeData);
+			nodeData_size = nodeData_size(1);
+
+			nid = nodeData(:, 1);
+			nodeAdmittance_dep = nodeData(:, 2) + nodeData(:, 3).*1i;
+
+			nodeIndex = unique([lineTo, lineFrom]);
+			self.value = sparse(length(nodeIndex),  length(nodeIndex));
+
+			for k = 1:lineDataSize	% 遍历所有的线路
+				fi = find(nid == lineFrom(k));
+				ti = find(nid == lineTo(k));
+				self.addBranch(fi, ti, lineImpedance(k), 0, ratio(k));
+			end
+		end
+
+		%% generateShunt: 根据已知节点参数计算节点导纳矩阵
+		function generateShunt(self, nodeData, lineData)
+
+			lineDataSize = size(lineData);
+			lineDataSize = lineDataSize(1);
+
+			lineFrom = lineData(:, 1);
+			lineTo = lineData(:, 2);
+			lineImpedance = lineData(:, 3) + lineData(:, 4).*1i;
+			lineAdmittance = lineData(:, 5) + lineData(:, 6).*1i;
+			ratio = lineData(:, 7).*exp(i.*lineData(:, 8));
+
+			nodeData_size = size(nodeData);
+			nodeData_size = nodeData_size(1);
+
+			nid = nodeData(:, 1);
+			nodeAdmittance_dep = nodeData(:, 2) + nodeData(:, 3).*1i;
+
+			nodeIndex = unique([lineTo, lineFrom]);
+			self.value = sparse(length(nodeIndex),  length(nodeIndex));
+
+			for k = 1:lineDataSize	% 遍历所有的线路
+				fi = find(nid == lineFrom(k));
+				ti = find(nid == lineTo(k));
+				self.addBranch(fi, ti, inf, lineAdmittance(k), ratio(k));
+			end
+
 			self.addAdmittance(1:nodeData_size, nodeAdmittance_dep);
 		end
 

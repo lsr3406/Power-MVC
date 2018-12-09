@@ -66,7 +66,7 @@ function [mpc] = case145_ts()
 	mpc.operating(1).time = 0;
 	% mpc.operating(1).nid = 50;
 	% mpc.operating(1).ntype = 'f3';
-	% mpc.operating(1).trZ = 1e-7;
+	% mpc.operating(1).zf = 1e-7;
 
 	% mpc.operating(2).time = 0.08;
 	% % mpc.operating(2).fid = 5;

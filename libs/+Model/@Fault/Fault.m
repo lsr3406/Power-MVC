@@ -5,9 +5,9 @@ classdef Fault < handle
 
 		ss;			% 电力系统稳态模型
 
-		nodes;		% 节点故障参数
-		generator;	% 发电机故障参数
-		branches;	% 线路故障参数
+		bus;		% 节点故障参数
+		gen;	% 发电机故障参数
+		branch;	% 线路故障参数
 
 		fault;		% 故障原始信息
 
@@ -34,22 +34,22 @@ classdef Fault < handle
 
 		%% get.transformerIndex: 返回变压器的索引
 		function [transformerIndex] = get.transformerIndex(self)
-			transformerIndex = 1:length(self.branches.xn);
+			transformerIndex = 1:length(self.branch.xn);
 		end
 
 		%% get.transformerCount: 返回变压器的数量
 		function [transformerCount] = get.transformerCount(self)
-			transformerCount = length(self.branches.xn);
+			transformerCount = length(self.branch.xn);
 		end
 
 		%% get.lineIndex: 返回变压器的索引
 		function [lineIndex] = get.lineIndex(self)
-			lineIndex = (self.transformerCount + 1):length(self.branches.x1);
+			lineIndex = (self.transformerCount + 1):length(self.branch.x1);
 		end
 
 		%% get.lineCount: 返回变压器的数量
 		function [lineCount] = get.lineCount(self)
-			lineCount = length(self.branches.x1) - length(self.branches.xn);
+			lineCount = length(self.branch.x1) - length(self.branch.xn);
 		end		
 
 		%% init: 电力系统故障分析模型初始化
@@ -66,36 +66,36 @@ classdef Fault < handle
 			transformerCount = transformerCount(1);
 
 			% 下面这些字段都最终都是列向量或列细胞数组
-			self.branches.fid = [[mpc.transformer{:, 1}]'; mpc.line(:, 1)];
-			self.branches.tid = [[mpc.transformer{:, 2}]'; mpc.line(:, 2)];
-			self.branches.r = [[mpc.transformer{:, 3}]'; mpc.line(:, 3)];
-			self.branches.x1 = [[mpc.transformer{:, 4}]'; mpc.line(:, 4)];
-			self.branches.x0 = [[mpc.transformer{:, 5}]'; mpc.line(:, 5)];
-			self.branches.xn = [mpc.transformer{:, 6}]';		% 没有线路的
-			self.branches.ratio = [mpc.transformer{:, 7}]';		% 没有线路的
-			self.branches.angle = [mpc.transformer{:, 8}]';		% 没有线路的
-			self.branches.group = {mpc.transformer{:, 9}}';	% cell array
+			self.branch.fid = [[mpc.transformer{:, 1}]'; mpc.line(:, 1)];
+			self.branch.tid = [[mpc.transformer{:, 2}]'; mpc.line(:, 2)];
+			self.branch.r = [[mpc.transformer{:, 3}]'; mpc.line(:, 3)];
+			self.branch.x1 = [[mpc.transformer{:, 4}]'; mpc.line(:, 4)];
+			self.branch.x0 = [[mpc.transformer{:, 5}]'; mpc.line(:, 5)];
+			self.branch.xn = [mpc.transformer{:, 6}]';		% 没有线路的
+			self.branch.ratio = [mpc.transformer{:, 7}]';		% 没有线路的
+			self.branch.angle = [mpc.transformer{:, 8}]';		% 没有线路的
+			self.branch.group = {mpc.transformer{:, 9}}';	% cell array
 
-			self.nodes.Ua = [];
-			self.nodes.Ub = [];
-			self.nodes.Uc = [];
-			self.nodes.U1 = [];
-			self.nodes.U2 = [];
-			self.nodes.U0 = [];
-			self.branches.Ia = [];
-			self.branches.Ib = [];
-			self.branches.Ic = [];
-			self.branches.I1 = [];
-			self.branches.I2 = [];
-			self.branches.I0 = [];
+			self.bus.Ua = [];
+			self.bus.Ub = [];
+			self.bus.Uc = [];
+			self.bus.U1 = [];
+			self.bus.U2 = [];
+			self.bus.U0 = [];
+			self.branch.Ia = [];
+			self.branch.Ib = [];
+			self.branch.Ic = [];
+			self.branch.I1 = [];
+			self.branch.I2 = [];
+			self.branch.I0 = [];
 
-			self.generator.nid = [mpc.gen{:, 1}]';
-			self.generator.r = [mpc.gen{:, 2}]';
-			self.generator.x1 = [mpc.gen{:, 3}]';
-			self.generator.x2 = [mpc.gen{:, 4}]';
-			self.generator.x0 = [mpc.gen{:, 5}]';
-			self.generator.xn = [mpc.gen{:, 6}]';
-			self.generator.group = {mpc.gen{:, 7}}';	% cell array
+			self.gen.nid = [mpc.gen{:, 1}]';
+			self.gen.r = [mpc.gen{:, 2}]';
+			self.gen.x1 = [mpc.gen{:, 3}]';
+			self.gen.x2 = [mpc.gen{:, 4}]';
+			self.gen.x0 = [mpc.gen{:, 5}]';
+			self.gen.xn = [mpc.gen{:, 6}]';
+			self.gen.group = {mpc.gen{:, 7}}';	% cell array
 		end
 
 		%% set120MatrixByBasePhase: 根据基本相返回 120 变换矩阵
@@ -190,6 +190,23 @@ classdef Fault < handle
 			end
 		end
 
+		%% getSequenceByFaultType: 根据故障类型返回需要考虑的相序
+		function [seq] = getSequenceByFaultType(self, faultType, positive)
+			switch faultType
+				case {'f3', 'b3'}
+					% do nothing
+				case 'f2'
+					seq = '2';
+				case {'f1', 'f11', 'b1', 'b2'}
+					seq = '20';
+				otherwise
+					error('illegal fault type');
+			end
+			if nargin == 2 || positive ~= false
+				seq = ['1', seq];
+			end
+		end
+
 		%% checkTransformerGroup: 检查变压器联结组的合法性, 并返回联结组信息
 		function [group] = checkTransformerGroup(self, string)
 
@@ -214,76 +231,76 @@ classdef Fault < handle
 		end
 
 		%% getZeroSequenceInfo(self, id, group): 返回变压器零序参数向节点导纳矩阵中添加的信息
-		function [nodes, item] = getZeroSequenceInfo(self, id, group)
+		function [bus, item] = getZeroSequenceInfo(self, id, group)
 			% 不计零序电阻
 			if strcmp(group.from, 'D') && ~strcmp(group.to, 'y')
-				nodes = 'to';
-				item = 1./((self.branches.x0(id) + 3.*self.branches.xn(id)).*1i);	% 向节点上添加的是导纳
+				bus = 'to';
+				item = 1./((self.branch.x0(id) + 3.*self.branch.xn(id)).*1i);	% 向节点上添加的是导纳
 				return ;
 			end
 			if strcmp(group.to, 'd') && ~strcmp(group.from, 'Y')
-				nodes = 'from';
-				item = 1./((self.branches.x0(id) + 3.*self.branches.xn(id)).*1i);	% 向节点上添加的是导纳
+				bus = 'from';
+				item = 1./((self.branch.x0(id) + 3.*self.branch.xn(id)).*1i);	% 向节点上添加的是导纳
 				return ;
 			end
 			if ~strcmp(group.from, 'Y') && ~strcmp(group.to, 'y')
-				nodes = 'both';
-				item = (self.branches.x0(id) + 3.*self.branches.xn(id)).*1i;	% 向线路上添加的是阻抗
+				bus = 'both';
+				item = (self.branch.x0(id) + 3.*self.branch.xn(id)).*1i;	% 向线路上添加的是阻抗
 				return ;
 			end
-			nodes = 'none';
+			bus = 'none';
 			item = [];
 		end
 
 		%% addLineToNAM: 将单条线路添加到正序负序零序节点导纳矩阵
 		function addLineToNAM(self, id, seq)
 
-			fi = find(self.ss.nodes.id == self.branches.fid(id));
-			ti = find(self.ss.nodes.id == self.branches.tid(id));
+			fi = find(self.ss.bus.id == self.branch.fid(id));
+			ti = find(self.ss.bus.id == self.branch.tid(id));
 			% 只考虑线路的阻抗, 不考虑充电电容. 由于线路的零序电抗已经考虑了互感, 故直接添加
 			if findstr(seq, '1')
-				self.NAM1.addImpedance(fi, ti, self.branches.r(id) + self.branches.x1(id).*1i);
+				self.NAM1.addImpedance(fi, ti, self.branch.r(id) + self.branch.x1(id).*1i);
 			end
 			if findstr(seq, '2')
-				self.NAM2.addImpedance(fi, ti, self.branches.r(id) + self.branches.x1(id).*1i);
+				self.NAM2.addImpedance(fi, ti, self.branch.r(id) + self.branch.x1(id).*1i);
 			end
 			if findstr(seq, '0')
-				self.NAM0.addImpedance(fi, ti, self.branches.x0(id).*1i);	% 不计零序电阻
+				self.NAM0.addImpedance(fi, ti, self.branch.x0(id).*1i);	% 不计零序电阻
 			end
 		end
 		
 		%% addTransformerToNAM: 将单台变压器添加到正序负序零序节点导纳矩阵
 		function addTransformerToNAM(self, id, seq)
 
-			fi = find(self.ss.nodes.id == self.branches.fid(id));
-			ti = find(self.ss.nodes.id == self.branches.tid(id));
+			fi = find(self.ss.bus.id == self.branch.fid(id));
+			ti = find(self.ss.bus.id == self.branch.tid(id));
 
 			% 先取得联结组信息
-			group = self.checkTransformerGroup(self.branches.group{id});
+			group = self.checkTransformerGroup(self.branch.group{id});
 			dAngle = (group.number./6.*pi);	% 由于联结组带来的移相效果
 
 			% 正序负序比较简单, 可以忽略励磁
 			% 正序需要按照 angle 和联结组号进行移相, 从一次侧到二次侧, 每点滞后 30 度; 负序需要按照 angle 和联结组号进行移相, 从一次侧到二次侧, 每点超前 30 度
 			if findstr(seq, '1')
-				self.NAM1.addTransformer(fi, ti, self.branches.r(id) + self.branches.x1(id).*1i, 0, self.branches.ratio(id).*exp(1i.*(self.branches.angle(id))));
+				self.NAM1.addTransformer(fi, ti, self.branch.r(id) + self.branch.x1(id).*1i, 0, self.branch.ratio(id).*exp(1i.*(self.branch.angle(id))));
 			end
 			if findstr(seq, '2')
-				self.NAM2.addTransformer(fi, ti, self.branches.r(id) + self.branches.x1(id).*1i, 0, self.branches.ratio(id).*exp(1i.*(self.branches.angle(id) + 2.*dAngle)));
+				self.NAM2.addTransformer(fi, ti, self.branch.r(id) + self.branch.x1(id).*1i, 0, self.branch.ratio(id).*exp(1i.*(self.branch.angle(id) + 2.*dAngle)));
 			end
 
 			% 变压器的零序等效电路参数与变压器铁芯结构有关, 我们忽略了三柱变压器对零序励磁电抗带来的影响, 认为所有变压器的励磁电抗都是无穷大
 			% 变压器的零序等效电路结构与变压器的联结组及标号有关. 下面分别讨论
 			% 零序不需要根据点数移相, 也不用考虑变压器本身的移相功能
 			if findstr(seq, '0')
-				[zsNodes, zsItem] = self.getZeroSequenceInfo(id, group);	% TODO 阻抗应分一半移相
+				[zsNodes, zsItem] = self.getZeroSequenceInfo(id, group);	% 阻抗应分一半移相
 				switch zsNodes
 					case 'from'
-						self.NAM0.addAdmittance(self.branches.fid(id), zsItem);	% 环流 + 开路
+						self.NAM0.addAdmittance(self.branch.fid(id), zsItem);	% 环流 + 开路
 					case 'to'
-						self.NAM0.addAdmittance(self.branches.tid(id), zsItem);	% 环流 + 开路
+						self.NAM0.addAdmittance(self.branch.tid(id), zsItem);	% 环流 + 开路
 					case 'both'
 						% 零序能通过两侧都接地的变压器, 在导纳矩阵中应放通
-						self.NAM0.addBranch(fi, ti, zsItem, 0, self.branches.ratio(id).*exp(1i.*(self.branches.angle(id) + dAngle)));
+						self.NAM0.addBranch(fi, ti, zsItem, 0, self.branch.ratio(id).*exp(1i.*(self.branch.angle(id) + dAngle)));
 					otherwise	% 'none'
 						% do nothing
 				end
@@ -293,19 +310,19 @@ classdef Fault < handle
 
 		%% addGeneratorToNAM: 向节点导纳矩阵添加发电机
 		function addGeneratorToNAM(self, seq)
-			index = getIndex(self.ss.nodes.id, self.generator.nid);
+			index = getIndex(self.ss.bus.id, self.gen.nid);
 			if findstr(seq, '1')
-				self.NAM1.addAdmittance(index, 1./(self.generator.r + self.generator.x1.*i));
+				self.NAM1.addAdmittance(index, 1./(self.gen.r + self.gen.x1.*i));
 			end
 			if findstr(seq, '2')
-				self.NAM2.addAdmittance(index, 1./(self.generator.r + self.generator.x2.*i));
+				self.NAM2.addAdmittance(index, 1./(self.gen.r + self.gen.x2.*i));
 			end
 
 			if findstr(seq, '0')
-				zeroPass = regexp(self.generator.group, '^[Yy][Nn0]$');
-				for k = 1:length(self.generator.nid)
+				zeroPass = regexp(self.gen.group, '^[Yy][Nn0]$');
+				for k = 1:length(self.gen.nid)
 					if zeroPass{k}
-						self.NAM0.addAdmittance(index, 1./((self.generator.x0 + 3.*self.generator.xn).*1i));
+						self.NAM0.addAdmittance(index, 1./((self.gen.x0 + 3.*self.gen.xn).*1i));
 					end
 				end
 			end
@@ -314,11 +331,11 @@ classdef Fault < handle
 		%% addLoadsToNAM: 向节点导纳矩阵添加负荷
 		function addLoadsToNAM(self, seq)
 			if findstr(seq, '1')
-				index1 = 1:length(self.ss.nodes.id);	% 正序
-				self.NAM1.addAdmittance(index1, self.ss.nodes.Pd - self.ss.nodes.Qd.*1i);
+				index1 = 1:length(self.ss.bus.id);	% 正序
+				self.NAM1.addAdmittance(index1, self.ss.bus.Pd - self.ss.bus.Qd.*1i);
 			end
 			if findstr(seq, '2')
-				index2 = find(self.ss.nodes.Pd ~= 0);	% 负序, 有负荷的地方
+				index2 = find(self.ss.bus.Pd ~= 0);	% 负序, 有负荷的地方
 				self.NAM2.addAdmittance(index2, ones(length(index2), 1)./(0.19 + 0.36.*1i));	% 普通负荷负序阻抗典型值
 			end
 			
@@ -343,7 +360,6 @@ classdef Fault < handle
 
 		end
 		
-
 		%% getPowerFlowResult: 计算故障前电网的潮流
 		function getPowerFlowResult(self, mpcSteady)
 
@@ -355,7 +371,7 @@ classdef Fault < handle
 			solver.method = 'FDBX';	% 求解方法
 			solver.maxIteration = 50;	% 最大迭代
 			solver.epsilon = 1e-5;	% 收敛判据, 功率不平衡量标幺
-			solver.start = 'default';	% 启动方式, default 为按发电机端电压起动
+			solver.start = 'flat';	% 启动方式
 
 			%% 求解
 			self.ss.solvePowerFlow(solver);
@@ -397,49 +413,49 @@ classdef Fault < handle
 		%% calcNetCurrent: 计算全网电流 (正序)
 		function calcNetCurrentPS(self, U1)
 
-			self.branches.I1 = zeros(length(self.branches.fid), 1);
+			self.branch.I1 = zeros(length(self.branch.fid), 1);
 			% TODO remove for loop
 			for k = self.transformerIndex
-				fi = find(self.ss.nodes.id == self.branches.fid(k));
-				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I1(k) = (self.nodes.U1(fi).*self.branches.ratio(k).*exp(self.branches.angle(k).*1i) - self.nodes.U1(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
+				fi = find(self.ss.bus.id == self.branch.fid(k));
+				ti = find(self.ss.bus.id == self.branch.tid(k));
+				self.branch.I1(k) = (self.bus.U1(fi).*self.branch.ratio(k).*exp(self.branch.angle(k).*1i) - self.bus.U1(ti)) ./ (self.branch.r(k) + self.branch.x1(k).*1i);
 			end
 			for k = self.lineIndex
-				fi = find(self.ss.nodes.id == self.branches.fid(k));
-				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I1(k) = (self.nodes.U1(fi) - self.nodes.U1(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
+				fi = find(self.ss.bus.id == self.branch.fid(k));
+				ti = find(self.ss.bus.id == self.branch.tid(k));
+				self.branch.I1(k) = (self.bus.U1(fi) - self.bus.U1(ti)) ./ (self.branch.r(k) + self.branch.x1(k).*1i);
 			end
 		end
 
 		%% calcNetCurrent: 计算全网电流 (负序)
 		function calcNetCurrentNS(self, U2)
 
-			self.branches.I2 = zeros(length(self.branches.fid), 1);
+			self.branch.I2 = zeros(length(self.branch.fid), 1);
 			for k = self.transformerIndex
-				fi = find(self.ss.nodes.id == self.branches.fid(k));
-				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I2(k) = (self.nodes.U2(fi).*self.branches.ratio(k).*exp(self.branches.angle(k).*1i) - self.nodes.U2(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
+				fi = find(self.ss.bus.id == self.branch.fid(k));
+				ti = find(self.ss.bus.id == self.branch.tid(k));
+				self.branch.I2(k) = (self.bus.U2(fi).*self.branch.ratio(k).*exp(self.branch.angle(k).*1i) - self.bus.U2(ti)) ./ (self.branch.r(k) + self.branch.x1(k).*1i);
 			end
 			for k = self.lineIndex
-				fi = find(self.ss.nodes.id == self.branches.fid(k));
-				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I2(k) = (self.nodes.U2(fi) - self.nodes.U2(ti)) ./ (self.branches.r(k) + self.branches.x1(k).*1i);
+				fi = find(self.ss.bus.id == self.branch.fid(k));
+				ti = find(self.ss.bus.id == self.branch.tid(k));
+				self.branch.I2(k) = (self.bus.U2(fi) - self.bus.U2(ti)) ./ (self.branch.r(k) + self.branch.x1(k).*1i);
 			end
 		end
 
 		%% calcNetCurrent: 计算全网电流 (零序)
 		function calcNetCurrentZS(self, U0)
 
-			self.branches.I0 = zeros(length(self.branches.fid), 1);
+			self.branch.I0 = zeros(length(self.branch.fid), 1);
 			for k = self.transformerIndex
-				fi = find(self.ss.nodes.id == self.branches.fid(k));
-				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I0(k) = (self.nodes.U0(fi).*self.branches.ratio(k).*exp(self.branches.angle(k).*1i) - self.nodes.U0(ti)) ./ (self.branches.r(k) + self.branches.x0(k).*1i);
+				fi = find(self.ss.bus.id == self.branch.fid(k));
+				ti = find(self.ss.bus.id == self.branch.tid(k));
+				self.branch.I0(k) = (self.bus.U0(fi).*self.branch.ratio(k).*exp(self.branch.angle(k).*1i) - self.bus.U0(ti)) ./ (self.branch.r(k) + self.branch.x0(k).*1i);
 			end
 			for k = self.lineIndex
-				fi = find(self.ss.nodes.id == self.branches.fid(k));
-				ti = find(self.ss.nodes.id == self.branches.tid(k));
-				self.branches.I0(k) = (self.nodes.U0(fi) - self.nodes.U0(ti)) ./ (self.branches.r(k) + self.branches.x0(k).*1i);
+				fi = find(self.ss.bus.id == self.branch.fid(k));
+				ti = find(self.ss.bus.id == self.branch.tid(k));
+				self.branch.I0(k) = (self.bus.U0(fi) - self.bus.U0(ti)) ./ (self.branch.r(k) + self.branch.x0(k).*1i);
 			end
 		end
 
@@ -465,13 +481,13 @@ classdef Fault < handle
 		%% solveThreePhaseShortCircult: 三相短路电网电压的计算
 		function solveThreePhaseShortCircult(self)
 			% 三相短路, 无需考虑负序与零序
-			self.NAM1.init(length(self.ss.nodes.id));
+			self.NAM1.init(length(self.ss.bus.id));
 			self.NAMInit('1');
 
 			%　求解节点阻抗矩阵的第　ｋ　列 (目前仅实现节点的短路故障)
 			if isfield(self.fault, 'nid')
-				k = find(self.ss.nodes.id == self.fault.nid);
-				ek = zeros(length(self.ss.nodes.id), 1);
+				k = find(self.ss.bus.id == self.fault.nid);
+				ek = zeros(length(self.ss.bus.id), 1);
 				ek(k) = 1;
 				z1 = self.NAM1.get() \ ek;
 			end
@@ -480,37 +496,37 @@ classdef Fault < handle
 			[za, k2, k0] = self.calcSumInfo('f3');
 
 			% 计算短路点正序电压与全网正序电压
-			Uss = self.ss.nodes.mag.*exp(self.ss.nodes.ang.*1i);	% 稳态
+			Uss = self.ss.bus.mag.*exp(self.ss.bus.ang.*1i);	% 稳态
 			If1 = Uss(k) ./ (z1(k) + za);	% z1(k) 是自阻抗, 在这里表示正序阻抗
 
-			self.nodes.U1 = Uss - If1 .* z1;
+			self.bus.U1 = Uss - If1 .* z1;
 
 			% save
-			self.saveItlog([self.nodes.U1(k), 0, 0], [If1, 0, 0]);
+			self.saveItlog([self.bus.U1(k), 0, 0], [If1, 0, 0]);
 
 			% 计算全网正序电流
-			self.calcNetCurrentPS(self.nodes.U1);
+			self.calcNetCurrentPS(self.bus.U1);
 
 			% 计算全网电压与电流
-			self.branches.Ia = self.branches.I1;
-			self.branches.Ib = self.branches.I1.*exp(-2./3.*pi.*1i);
-			self.branches.Ic = self.branches.I1.*exp(2./3.*pi.*1i);
-			self.nodes.Ua = self.nodes.U1;
-			self.nodes.Ub = self.nodes.U1.*exp(-2./3.*pi.*1i);
-			self.nodes.Uc = self.nodes.U1.*exp(2./3.*pi.*1i);
+			self.branch.Ia = self.branch.I1;
+			self.branch.Ib = self.branch.I1.*exp(-2./3.*pi.*1i);
+			self.branch.Ic = self.branch.I1.*exp(2./3.*pi.*1i);
+			self.bus.Ua = self.bus.U1;
+			self.bus.Ub = self.bus.U1.*exp(-2./3.*pi.*1i);
+			self.bus.Uc = self.bus.U1.*exp(2./3.*pi.*1i);
 		end
 
 		%% solveTwoPhaseShortCircult: 两相短路电网电压的计算
 		function solveTwoPhaseShortCircult(self)
 			% 两相短路, 无需考虑零序
-			self.NAM1.init(length(self.ss.nodes.id));
-			self.NAM2.init(length(self.ss.nodes.id));
+			self.NAM1.init(length(self.ss.bus.id));
+			self.NAM2.init(length(self.ss.bus.id));
 			self.NAMInit('12');
 
 			%　求解节点阻抗矩阵的第　ｋ　列 (目前仅实现节点的短路故障)
 			if isfield(self.fault, 'nid')
-				k = find(self.ss.nodes.id == self.fault.nid);
-				ek = zeros(length(self.ss.nodes.id), 1);
+				k = find(self.ss.bus.id == self.fault.nid);
+				ek = zeros(length(self.ss.bus.id), 1);
 				ek(k) = 1;
 				z1 = self.NAM1.get() \ ek;
 				z2 = self.NAM2.get() \ ek;
@@ -520,7 +536,7 @@ classdef Fault < handle
 			[za, k2, k0] = self.calcSumInfo('f2', z2(k));
 
 			% 计算短路点正序电压与全网正序电压
-			Uss = self.ss.nodes.mag.*exp(self.ss.nodes.ang.*1i);	% 稳态
+			Uss = self.ss.bus.mag.*exp(self.ss.bus.ang.*1i);	% 稳态
 
 			If1 = Uss(k) ./ (z1(k) + za);	% z1(k) 是自阻抗, 在这里表示正序阻抗
 			If2 = k2.*If1;
@@ -528,40 +544,40 @@ classdef Fault < handle
 			Uf1 = If1 .* za;
 			Uf2 = -If2 .* z2;
 
-			self.nodes.U1 = Uss - z1 .* If1;
-			self.nodes.U2 = - z2 .* If2;
+			self.bus.U1 = Uss - z1 .* If1;
+			self.bus.U2 = - z2 .* If2;
 
 
 			% save
-			self.saveItlog([self.nodes.U1(k), self.nodes.U2(k), 0], [If1, If2, 0]);
+			self.saveItlog([self.bus.U1(k), self.bus.U2(k), 0], [If1, If2, 0]);
 
 			% 计算全网正序电流
-			self.calcNetCurrentPS(self.nodes.U1);
-			self.calcNetCurrentNS(self.nodes.U2);
+			self.calcNetCurrentPS(self.bus.U1);
+			self.calcNetCurrentNS(self.bus.U2);
 
 			% 计算全网电压与电流(这里都是非共轭转置)
-			I = self.T * transpose([self.branches.I1, self.branches.I2, zeros(length(self.branches.I1), 1)]);	% 3 * n
-			self.branches.Ia = transpose(I(1, :));
-			self.branches.Ib = transpose(I(2, :));
-			self.branches.Ic = transpose(I(3, :));
-			U = self.T * transpose([self.nodes.U1, self.nodes.U2, zeros(length(self.nodes.U1), 1)]);	% 3 * n
-			self.nodes.Ua = transpose(U(1, :));
-			self.nodes.Ub = transpose(U(2, :));
-			self.nodes.Uc = transpose(U(3, :));
+			I = self.T * transpose([self.branch.I1, self.branch.I2, zeros(length(self.branch.I1), 1)]);	% 3 * n
+			self.branch.Ia = transpose(I(1, :));
+			self.branch.Ib = transpose(I(2, :));
+			self.branch.Ic = transpose(I(3, :));
+			U = self.T * transpose([self.bus.U1, self.bus.U2, zeros(length(self.bus.U1), 1)]);	% 3 * n
+			self.bus.Ua = transpose(U(1, :));
+			self.bus.Ub = transpose(U(2, :));
+			self.bus.Uc = transpose(U(3, :));
 		end
 
 		%% solveSinglePhaseShortCircult: 单相短路电网电压的计算
 		function solveSinglePhaseShortCircult(self)
 			% 单相短路
-			self.NAM1.init(length(self.ss.nodes.id));
-			self.NAM2.init(length(self.ss.nodes.id));
-			self.NAM0.init(length(self.ss.nodes.id));
+			self.NAM1.init(length(self.ss.bus.id));
+			self.NAM2.init(length(self.ss.bus.id));
+			self.NAM0.init(length(self.ss.bus.id));
 			self.NAMInit('120');
 
 			%　求解节点阻抗矩阵的第　ｋ　列 (目前仅实现节点的短路故障)
 			if isfield(self.fault, 'nid')
-				k = find(self.ss.nodes.id == self.fault.nid);
-				ek = zeros(length(self.ss.nodes.id), 1);
+				k = find(self.ss.bus.id == self.fault.nid);
+				ek = zeros(length(self.ss.bus.id), 1);
 				ek(k) = 1;
 				z1 = self.NAM1.get() \ ek;
 				z2 = self.NAM2.get() \ ek;
@@ -578,7 +594,7 @@ classdef Fault < handle
 			[za, k2, k0] = self.calcSumInfo('f1', z2(k), z0(k));
 
 			% 计算短路点正序电压与全网正序电压
-			Uss = self.ss.nodes.mag.*exp(self.ss.nodes.ang.*1i);	% 稳态
+			Uss = self.ss.bus.mag.*exp(self.ss.bus.ang.*1i);	% 稳态
 
 			If1 = Uss(k) ./ (z1(k) + za);	% z1(k) 是自阻抗, 在这里表示正序阻抗
 			If2 = k2.*If1;
@@ -588,42 +604,42 @@ classdef Fault < handle
 			% Uf2 = -If2 .* z2;
 			% Uf0 = -If0 .* z0;
 
-			self.nodes.U1 = Uss - z1 .* If1;
-			self.nodes.U2 = - z2 .* If2;
-			self.nodes.U0 = - z0 .* If0;
+			self.bus.U1 = Uss - z1 .* If1;
+			self.bus.U2 = - z2 .* If2;
+			self.bus.U0 = - z0 .* If0;
 
 			% save
-			self.saveItlog([self.nodes.U1(k), self.nodes.U2(k), self.nodes.U0(k)], [If1, If2, If0]);
+			self.saveItlog([self.bus.U1(k), self.bus.U2(k), self.bus.U0(k)], [If1, If2, If0]);
 
 			% 计算全网正序电流
-			self.calcNetCurrentPS(self.nodes.U1);
-			self.calcNetCurrentNS(self.nodes.U2);
-			self.calcNetCurrentZS(self.nodes.U0);
+			self.calcNetCurrentPS(self.bus.U1);
+			self.calcNetCurrentNS(self.bus.U2);
+			self.calcNetCurrentZS(self.bus.U0);
 
 			% 计算全网电压与电流
-			I = self.T * transpose([self.branches.I1, self.branches.I2, self.branches.I0]);	% 3 * n
-			self.branches.Ia = transpose(I(1, :));
-			self.branches.Ib = transpose(I(2, :));
-			self.branches.Ic = transpose(I(3, :));
-			U = self.T * transpose([self.nodes.U1, self.nodes.U2, self.nodes.U0]);	% 3 * n
-			self.nodes.Ua = transpose(U(1, :));
-			self.nodes.Ub = transpose(U(2, :));
-			self.nodes.Uc = transpose(U(3, :));
+			I = self.T * transpose([self.branch.I1, self.branch.I2, self.branch.I0]);	% 3 * n
+			self.branch.Ia = transpose(I(1, :));
+			self.branch.Ib = transpose(I(2, :));
+			self.branch.Ic = transpose(I(3, :));
+			U = self.T * transpose([self.bus.U1, self.bus.U2, self.bus.U0]);	% 3 * n
+			self.bus.Ua = transpose(U(1, :));
+			self.bus.Ub = transpose(U(2, :));
+			self.bus.Uc = transpose(U(3, :));
 			
 		end
 
 		%% solveTwoPhaseShortCircultToGround: 两相短路接地电网电压的计算
 		function solveTwoPhaseShortCircultToGround(self)
 			% 两相短路接地
-			self.NAM1.init(length(self.ss.nodes.id));
-			self.NAM2.init(length(self.ss.nodes.id));
-			self.NAM0.init(length(self.ss.nodes.id));
+			self.NAM1.init(length(self.ss.bus.id));
+			self.NAM2.init(length(self.ss.bus.id));
+			self.NAM0.init(length(self.ss.bus.id));
 			self.NAMInit('120');
 
 			%　求解节点阻抗矩阵的第　ｋ　列 (目前仅实现节点的短路故障)
 			if isfield(self.fault, 'nid')
-				k = find(self.ss.nodes.id == self.fault.nid);
-				ek = zeros(length(self.ss.nodes.id), 1);
+				k = find(self.ss.bus.id == self.fault.nid);
+				ek = zeros(length(self.ss.bus.id), 1);
 				ek(k) = 1;
 				z1 = self.NAM1.get() \ ek;
 				z2 = self.NAM2.get() \ ek;
@@ -634,7 +650,7 @@ classdef Fault < handle
 			[za, k2, k0] = self.calcSumInfo('f11', z2(k), z0(k));
 
 			% 计算短路点正序电压与全网正序电压
-			Uss = self.ss.nodes.mag.*exp(self.ss.nodes.ang.*1i);	% 稳态
+			Uss = self.ss.bus.mag.*exp(self.ss.bus.ang.*1i);	% 稳态
 
 			If1 = Uss(k) ./ (z1(k) + za);	% z1(k) 是自阻抗, 在这里表示正序阻抗
 			If2 = k2.*If1;
@@ -644,27 +660,27 @@ classdef Fault < handle
 			% Uf2 = -If2 .* z2;
 			% Uf0 = -If0 .* z0;
 
-			self.nodes.U1 = Uss - z1 .* If1;
-			self.nodes.U2 = - z2 .* If2;
-			self.nodes.U0 = - z0 .* If0;
+			self.bus.U1 = Uss - z1 .* If1;
+			self.bus.U2 = - z2 .* If2;
+			self.bus.U0 = - z0 .* If0;
 
 			% save
-			self.saveItlog([self.nodes.U1(k), self.nodes.U2(k), self.nodes.U0(k)], [If1, If2, If0]);
+			self.saveItlog([self.bus.U1(k), self.bus.U2(k), self.bus.U0(k)], [If1, If2, If0]);
 
 			% 计算全网正序电流
-			self.calcNetCurrentPS(self.nodes.U1);
-			self.calcNetCurrentNS(self.nodes.U2);
-			self.calcNetCurrentZS(self.nodes.U0);
+			self.calcNetCurrentPS(self.bus.U1);
+			self.calcNetCurrentNS(self.bus.U2);
+			self.calcNetCurrentZS(self.bus.U0);
 
 			% 计算全网电压与电流
-			I = self.T * transpose([self.branches.I1, self.branches.I2, self.branches.I0]);	% 3 * n
-			self.branches.Ia = transpose(I(1, :));
-			self.branches.Ib = transpose(I(2, :));
-			self.branches.Ic = transpose(I(3, :));
-			U = self.T * transpose([self.nodes.U1, self.nodes.U2, self.nodes.U0]);	% 3 * n
-			self.nodes.Ua = transpose(U(1, :));
-			self.nodes.Ub = transpose(U(2, :));
-			self.nodes.Uc = transpose(U(3, :));
+			I = self.T * transpose([self.branch.I1, self.branch.I2, self.branch.I0]);	% 3 * n
+			self.branch.Ia = transpose(I(1, :));
+			self.branch.Ib = transpose(I(2, :));
+			self.branch.Ic = transpose(I(3, :));
+			U = self.T * transpose([self.bus.U1, self.bus.U2, self.bus.U0]);	% 3 * n
+			self.bus.Ua = transpose(U(1, :));
+			self.bus.Ub = transpose(U(2, :));
+			self.bus.Uc = transpose(U(3, :));
 		end
 
 		%% solveFault: 电力系统故障分析

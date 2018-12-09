@@ -23,7 +23,7 @@ function [mpc] = case39_ts()
 	mpc.operating(1).time = 0;
 	mpc.operating(1).nid = 15;
 	mpc.operating(1).ntype = 'f3';
-	mpc.operating(1).trZ = 1e-2;
+	mpc.operating(1).zf = 1e-2;
 
 	mpc.operating(2).time = 0.05;
 	mpc.operating(2).nid = 15;

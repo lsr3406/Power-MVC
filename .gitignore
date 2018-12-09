@@ -1,2 +1,12 @@
 *.mat
 report*.txt
+
+# 下面内容涉及实验室机密, 不作上传
+/libs/+Model/@SteadyState/*
+!/libs/+Model/@SteadyState/SteadyState.m
+/libs/+Model/@TransientState/*
+!/libs/+Model/@TransientState/TransientState.m
+/libs/+Controller/@SteadyState/*
+!/libs/+Controller/@SteadyState/SteadyState.m
+/libs/+Controller/@TransientState/*
+!/libs/+Controller/@TransientState/TransientState.m
