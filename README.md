@@ -1,4 +1,4 @@
-# Moon-PowerFlow
-电力系统稳态分析常用工具
+# Power-MVC
+电力系统分析常用工具
 
 
