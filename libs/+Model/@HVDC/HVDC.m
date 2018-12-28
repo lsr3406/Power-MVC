@@ -1,12 +1,12 @@
 % encoding: utf-8
 % @author: siru
 % @create on: 2018-09-29 14:13:16
-% @update on: 2018-12-09 14:36:52
+% @update on: 2018-12-28 21:46:08
 %% 直流输电
 classdef HVDC < handle
 
 	properties (Constant)
-		alphaMin = 10/180*pi;	% 10 deg
+		alphaMin = 5/180*pi;	% 5 deg
 		alphaMax = 20/180*pi;	% 20 deg
 		gammaMin = 10/180*pi;	% 10 deg
 		currentMargin = 0.1	% 电流裕度
@@ -166,21 +166,21 @@ classdef HVDC < handle
 			self.alpha = acos((self.Vdr + self.Rcr .* self.Id) ./ self.Vdr0);
 
 			% 检查 alpha 越限情况, 并及时处理
-			oli = find(real(self.alpha) < self.alphaMin);
-			oli = intersect(oli, find(self.Hr < 2));
-			self.Hr(oli) = min(ceil(40 .* (self.Tr(oli).*cos(self.alpha(oli)) ./ cos(self.alphaMin) - 1)), 2);
-			% assert(~any(self.Hr(oli) > 2));
-			self.Tr(oli) = 1 + self.Hr(oli) .* 0.025;
-			self.Vdr0(oli) = 1.35 .* self.Tr(oli) .* self.Er(oli);
-			self.alpha(oli) = acos((self.Vdr(oli) + self.Rcr(oli) .* self.Id(oli)) ./ self.Vdr0(oli));
+			% oli = find(real(self.alpha) < self.alphaMin);
+			% oli = intersect(oli, find(self.Hr < 2));
+			% self.Hr(oli) = min(ceil(40 .* (self.Tr(oli).*cos(self.alpha(oli)) ./ cos(self.alphaMin) - 1)), 2);
+			% % assert(~any(self.Hr(oli) > 2));
+			% self.Tr(oli) = 1 + self.Hr(oli) .* 0.025;
+			% self.Vdr0(oli) = 1.35 .* self.Tr(oli) .* self.Er(oli);
+			% self.alpha(oli) = acos((self.Vdr(oli) + self.Rcr(oli) .* self.Id(oli)) ./ self.Vdr0(oli));
 			
-			oli = find(real(self.alpha) > self.alphaMax);
-			oli = intersect(oli, find(self.Hr > -2));
-			self.Hr(oli) = max(floor(40 .* (self.Tr(oli).*cos(self.alpha(oli)) ./ cos(self.alphaMax) - 1)), -2);
-			% assert(~any(self.Hr(oli) > 2));
-			self.Tr(oli) = 1 + self.Hr(oli) .* 0.025;
-			self.Vdr0(oli) = 1.35 .* self.Tr(oli) .* self.Er(oli);
-			self.alpha(oli) = acos((self.Vdr(oli) + self.Rcr(oli) .* self.Id(oli)) ./ self.Vdr0(oli));
+			% oli = find(real(self.alpha) > self.alphaMax);
+			% oli = intersect(oli, find(self.Hr > -2));
+			% self.Hr(oli) = max(floor(40 .* (self.Tr(oli).*cos(self.alpha(oli)) ./ cos(self.alphaMax) - 1)), -2);
+			% % assert(~any(self.Hr(oli) > 2));
+			% self.Tr(oli) = 1 + self.Hr(oli) .* 0.025;
+			% self.Vdr0(oli) = 1.35 .* self.Tr(oli) .* self.Er(oli);
+			% self.alpha(oli) = acos((self.Vdr(oli) + self.Rcr(oli) .* self.Id(oli)) ./ self.Vdr0(oli));
 
 			% assert(all(self.alpha < 0.09));
 

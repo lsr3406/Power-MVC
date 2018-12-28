@@ -3,13 +3,12 @@ classdef SteadyState < handle
 	properties
 		mBase;
 
-		%% 下面这三个表示电网中一些元素的状态, 它们可能经常改变.
+		%% 下面这 4 个表示电网中一些元素的状态, 它们可能经常改变.
 		bus;		% 节点状态, [id, type, mag, ang, Pg, Qg, Pc, Qc, Pd, Qd, Pis, Qis, Pout, Qout, dP, dQ, Pmax, Qmax, Pmin, Qmin, Vmax, Vmin]
 		gen;	% 发电机状态, [id, nid, Pg, Qg, status]
 		branch;	% 线路状态,	[id, fid, tid, ratio, Pij, Qij, Pji, Qji, dP, dQ, status]
 		gencost;
 
-		%% 下面存放的是一些中间计算结果, 由于这些矩阵较大, 调用较多, 但不经常改变, 因此当做属性存储
 		NAM;		% 节点导纳矩阵
 
 		FDM1;		% 快速分解法修正方程第一系数矩阵
@@ -232,6 +231,8 @@ classdef SteadyState < handle
 			self.bus.Qg0 = zeros(busLength,1);
 			self.bus.Pd = mpc.bus(:, 3)./mpc.baseMVA;
 			self.bus.Qd = mpc.bus(:, 4)./mpc.baseMVA;
+			self.bus.Pdc = zeros(busLength,1);
+			self.bus.Qdc = zeros(busLength,1);
 			self.bus.Pc = zeros(busLength,1);
 			self.bus.Qc = zeros(busLength,1);
 			self.bus.Pis = zeros(busLength,1);
@@ -399,8 +400,8 @@ classdef SteadyState < handle
 		%% planUpdate: 更新各节点功率计划值, 结果存放于 bus 字段相应属性中
 		% @return void
 		function planUpdate(self)
-			self.bus.Pis = self.bus.Pg - self.bus.Pd;
-			self.bus.Qis = self.bus.Qg - self.bus.Qd;
+			self.bus.Pis = self.bus.Pg + self.bus.Pdc - self.bus.Pd;
+			self.bus.Qis = self.bus.Qg + self.bus.Qdc - self.bus.Qd;
 		end
 
 		%% setPowerOutflow: 计算从 nid 节点注入电网的潮流, 结果存放于 bus 字段相应属性中
@@ -658,8 +659,8 @@ classdef SteadyState < handle
 		% @return void
 		function setGeneratorPower(self)
 			% 每个节点发电机发出的功率都等于当地需求和收敛时潮流方程计算的注入电网的功率的和
-			self.bus.Pg(self.slack) = self.bus.Pout(self.slack) + self.bus.Pd(self.slack);
-			self.bus.Qg([self.pv; self.slack]) = self.bus.Qout([self.pv; self.slack]) + self.bus.Qd([self.pv; self.slack]);
+			self.bus.Pg(self.slack) = self.bus.Pout(self.slack) - self.bus.Pdc(self.slack) + self.bus.Pd(self.slack);
+			self.bus.Qg([self.pv; self.slack]) = self.bus.Qout([self.pv; self.slack]) - self.bus.Qdc([self.pv; self.slack]) + self.bus.Qd([self.pv; self.slack]);
 		end
 
 		%% getLinePower: 计算普通线路的潮流
@@ -879,12 +880,13 @@ classdef SteadyState < handle
 			self.bus.Pg = self.bus.Pg0;
 			self.bus.Pg = self.bus.Pg0;
 
+			self.bus.Pdc = zeros(self.n_bus, 1);
+			self.bus.Qdc = zeros(self.n_bus, 1);
 			for k = 1:n_hvdc
-				self.bus.Pg(self.hvdc.f(k)) = self.bus.Pg(self.hvdc.f(k)) - self.hvdc.Pr(k);
-				self.bus.Pg(self.hvdc.t(k)) = self.bus.Pg(self.hvdc.t(k)) + self.hvdc.Pi(k);
-				% 暂时不考虑直流输电系统无功功率对交流系统的影响
-				% self.bus.Qg(self.hvdc.f(k)) = self.bus.Qg(self.hvdc.f(k)) - self.hvdc.Qr(k);
-				% self.bus.Qg(self.hvdc.t(k)) = self.bus.Qg(self.hvdc.t(k)) + self.hvdc.Qi(k);
+				self.bus.Pdc(self.hvdc.f(k)) = self.bus.Pdc(self.hvdc.f(k)) - self.hvdc.Pr(k);
+				self.bus.Pdc(self.hvdc.t(k)) = self.bus.Pdc(self.hvdc.t(k)) + self.hvdc.Pi(k);
+				% self.bus.Qdc(self.hvdc.f(k)) = self.bus.Qdc(self.hvdc.f(k)) - self.hvdc.Qr(k);
+				% self.bus.Qdc(self.hvdc.t(k)) = self.bus.Qdc(self.hvdc.t(k)) - self.hvdc.Qi(k);
 			end
 		end
 
@@ -899,13 +901,13 @@ classdef SteadyState < handle
 		    % ❀ 将各节点电压的初值代入潮流方程,并求解有功无功不平衡量
 		    self.planInit();    % 计算各节点功率的计划值
 		    
+	        if isobject(self.hvdc)
+	            self.hvdc.render(self.bus.mag(self.hvdc.f), self.bus.mag(self.hvdc.t));
+	            self.setSourceFromHVDC();
+	        end
 		    % 这个循环是与检测无功功率或与直流输电有关的, 与具体的求解无关
 		    while 1
 
-		        if isobject(self.hvdc)
-		            self.hvdc.render(self.bus.mag(self.hvdc.f), self.bus.mag(self.hvdc.t));
-		            self.setSourceFromHVDC();
-		        end
 
 		        % ❀ 进入迭代. 得到的 result 包含是否收敛, 迭代次数等信息
 		        switch solver.method
@@ -924,11 +926,13 @@ classdef SteadyState < handle
 
 		        self.setGeneratorPower();   % 根据迭代结果计算发电机功率, 结果记录到 bus 属性中
 		        
-		        if isfield(solver, 'checkReactivePower') && solver.checkReactivePower == true && self.checkReactivePower()
-		            continue;
-		        end
+		        % if isfield(solver, 'checkReactivePower') && solver.checkReactivePower == true && self.checkReactivePower()
+		        %     continue;
+		        % end
 
 		        if isobject(self.hvdc) && ~self.hvdc.render(self.bus.mag(self.hvdc.f), self.bus.mag(self.hvdc.t))
+		        	self.setSourceFromHVDC();
+		        	disp([self.bus.mag(4:5)', self.hvdc.Pr, self.hvdc.Pi, self.hvdc.Qr, self.hvdc.Qi]);
 		            continue;
 		        end
 		        break;
