@@ -885,8 +885,8 @@ classdef SteadyState < handle
 			for k = 1:n_hvdc
 				self.bus.Pdc(self.hvdc.f(k)) = self.bus.Pdc(self.hvdc.f(k)) - self.hvdc.Pr(k);
 				self.bus.Pdc(self.hvdc.t(k)) = self.bus.Pdc(self.hvdc.t(k)) + self.hvdc.Pi(k);
-				% self.bus.Qdc(self.hvdc.f(k)) = self.bus.Qdc(self.hvdc.f(k)) - self.hvdc.Qr(k);
-				% self.bus.Qdc(self.hvdc.t(k)) = self.bus.Qdc(self.hvdc.t(k)) - self.hvdc.Qi(k);
+				self.bus.Qdc(self.hvdc.f(k)) = self.bus.Qdc(self.hvdc.f(k)) - self.hvdc.Qr(k);
+				self.bus.Qdc(self.hvdc.t(k)) = self.bus.Qdc(self.hvdc.t(k)) - self.hvdc.Qi(k);
 			end
 		end
 
