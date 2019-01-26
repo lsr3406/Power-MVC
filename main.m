@@ -1,7 +1,7 @@
 % encoding: utf-8
 % @author: lsr3406
 % @create on: 2018-01-19 11:03:57
-% @update on: 2018-03-29 10:51:00
+% @update on: 2019-01-26 09:57:19
 
 % matlab 初始化
 clear all;		% 清除变量
@@ -13,9 +13,6 @@ addpath('./framework');
 
 % 入口
 Start().run(config);
-
-%% debug
-load('test.mat');
 
 %% 2018-01-20
 % 入口方法中使用 eval() 是迫不得已, 做成 api 后需要注意安全性问题

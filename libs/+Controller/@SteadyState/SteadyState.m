@@ -29,7 +29,7 @@ classdef SteadyState < handle
             ss.init(getMpcSteady('bus4'));
 
             solver.method = 'NR';
-            solver.maxIteration = 10;
+            solver.n_iters_max = 10;
             solver.epsilon = 1e-5;
             solver.start = '';
 
@@ -47,7 +47,7 @@ classdef SteadyState < handle
             solverMethodList = {'NR', 'FD', 'FDBX', 'FDXB'};
 
             %% 设置求解器的基本信息
-            solver.maxIteration = 100;  % 最大迭代
+            solver.n_iters_max = 100;  % 最大迭代
             solver.epsilon = 1e-5;  % 收敛判据, 功率不平衡量标幺
             solver.start = '';  % 启动方式, default 为按发电机端电压起动
             ss = Model.SteadyState();
@@ -86,7 +86,7 @@ classdef SteadyState < handle
             colorList = {[0.95, 0.26, 0.21], [0.3, 0.68, 0.31], [0.13, 0.59, 0.95], [1, 0.75, 0.03]};
 
             %% 设置求解器的基本信息
-            solver.maxIteration = 7;    % 最大迭代
+            solver.n_iters_max = 7;    % 最大迭代
             solver.epsilon = 1e-20; % 收敛判据, 功率不平衡量标幺
             solver.start = '';  % 启动方式, default 为按发电机端电压起动
             ss = Model.SteadyState();
@@ -115,13 +115,13 @@ classdef SteadyState < handle
                 grid on;
                 
                 for k2 = 1:4
-                    cx = 0:0.1:solver.maxIteration;
-                    cy = interp1(0:solver.maxIteration, log10(epsilon{k1}(k2, :)), cx,'cubic'); % 计算插值函数在 0:0.1:solver.maxIteration 处的值，0:solver.maxIteration, log10(epsilon{k1}) 是观测值
+                    cx = 0:0.1:solver.n_iters_max;
+                    cy = interp1(0:solver.n_iters_max, log10(epsilon{k1}(k2, :)), cx,'cubic'); % 计算插值函数在 0:0.1:solver.n_iters_max 处的值，0:solver.n_iters_max, log10(epsilon{k1}) 是观测值
                     plot(cx, cy, 'lineWidth', 1.5, 'Color', colorList{k2});
                 end
                 legend('牛顿法','原生 PQ 分解法','BX 法','XB 法');
                 for k2 = 1:4
-                    plot(0:solver.maxIteration, log10(epsilon{k1}(k2, :)), 'o', 'Color', colorList{k2});
+                    plot(0:solver.n_iters_max, log10(epsilon{k1}(k2, :)), 'o', 'Color', colorList{k2});
                 end
 
                 set(get(gca,'XLabel'),'String','迭代次数');
@@ -138,7 +138,7 @@ classdef SteadyState < handle
 
             %% 设置求解器的基本信息
             solver.method = 'NR';   % 求解方法
-            solver.maxIteration = 100;  % 最大迭代
+            solver.n_iters_max = 100;  % 最大迭代
             solver.epsilon = 1e-6;  % 收敛判据, 功率不平衡量标幺
             solver.start = '';  % 启动方式, default 为按发电机端电压起动
 
@@ -161,7 +161,7 @@ classdef SteadyState < handle
 
             %% 设置求解器的基本信息
             solver.method = 'NR';   % 求解方法
-            solver.maxIteration = 50;   % 最大迭代
+            solver.n_iters_max = 50;   % 最大迭代
             solver.epsilon = 1e-6;  % 收敛判据, 功率不平衡量标幺
             solver.start = '';  % 启动方式, default 为按发电机端电压起动
 

@@ -351,7 +351,7 @@ classdef SteadyState < handle
 
             startMode = '';
 
-            if isstruct(solver) && isfield(solver, 'start') && regexp(solver.start, '^\w+$')
+            if isstruct(solver) && isfield(solver, 'start') % && regexp(solver.start, '^\w+$')
                 startMode = solver.start;
             end
 
