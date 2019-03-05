@@ -14,12 +14,12 @@ classdef Plain < handle
 			fprintf(file_t, '%s\n', '                          Power Flow');
 			fprintf(file_t, '%s\n', '=========================================================================');
 
-			fprintf(file_t, '\n%s%d%s%d%s%d%s%d\n','Bus Count       PQ / PV / ref / sum      ',ss.pqCount,' / ',ss.pvCount,' / ',ss.refCount,' / ',length(ss.bus.id));
-			fprintf(file_t, '%s%d%s%d%s%d\n','Branches Count       line / transformer / sum      ',ss.lineCount,' / ',ss.transformerCount,' / ',length(ss.branche.id));
-			fprintf(file_t, '%s%d%s%d%s%d\n','Generator Count       PV / ref / sum      ',ss.pvGens,' / ',ss.refGens,' / ',ss.pvGens+ss.refGens);
-			fprintf(file_t, '%s%d\n','Loads Count                                  ',ss.loadCount);
+			fprintf(file_t, '\n%s%d%s%d%s%d%s%d\n','Bus Count       PQ / PV / ref / sum      ', ss.n_pq, ' / ', ss.n_pv, ' / ', ss.n_slack, ' / ',length(ss.bus.id));
+			fprintf(file_t, '%s%d%s%d%s%d\n', 'Branches Count       line / transformer / sum      ', ss.n_line, ' / ', ss.n_trans, ' / ', length(ss.branch.id));
+			fprintf(file_t, '%s%d%s%d%s%d\n', 'Generator Count       PV / ref / sum      ', ss.pvGens, ' / ', ss.slackGens, ' / ', ss.pvGens+ss.slackGens);
+			fprintf(file_t, '%s%d\n', 'Loads Count                                  ', ss.n_load);
 
-			fprintf(file_t, '\n%s%s%d\n', 'solver.method: ', config.method);
+			fprintf(file_t, '\n%s%s%d\n', 'solver.method: ', result.method);
 
 			if result.status == 101
 				fprintf(file_t, '\n%s%d%s\n', 'error ', result.status, ': Number of iterations exceeds the limit');
@@ -50,14 +50,14 @@ classdef Plain < handle
 
 			fprintf(file_t, '\n%s\n\n', 'Branch Power:');
 			fprintf(file_t, '%s\n', 'id from to    Pij      Qij        Pji      Qji        dP      dQ');
-			for k = ss.branche.id'
-				fprintf(file_t, '  %d',[ss.branche.id(k),ss.branche.fid(k),ss.branche.tid(k)]);
-				fprintf(file_t, '   %6.3f',[ss.branche.Pij(k),ss.branche.Qij(k),ss.branche.Pji(k),ss.branche.Qji(k),ss.branche.dP(k),ss.branche.dQ(k)]*100);
+			for k = ss.branch.id'
+				fprintf(file_t, '  %d',[ss.branch.id(k),ss.branch.fid(k),ss.branch.tid(k)]);
+				fprintf(file_t, '   %6.3f',[ss.branch.Pij(k),ss.branch.Qij(k),ss.branch.Pji(k),ss.branch.Qji(k),ss.branch.dP(k),ss.branch.dQ(k)]*100);
 				fprintf(file_t, '\n');
 			end
 			
 			fprintf(file_t, 'Total Loss');
-			fprintf(file_t, '   %6.3f',sum(ss.branche.dP)*100,sum(ss.branche.dQ)*100);
+			fprintf(file_t, '   %6.3f',sum(ss.branch.dP)*100,sum(ss.branch.dQ)*100);
 
 			fprintf(file_t, '\n');
 			fprintf(file_t, '\n');
@@ -75,10 +75,10 @@ classdef Plain < handle
 			fprintf(file_t, '%s\n', '                          电力系统故障计算报告');
 			fprintf(file_t, '%s\n', '=========================================================================');
 
-			fprintf(file_t, '\n%s%d%s%d%s%d%s%d\n','节点数       PQ / PV / 平衡 / 合计      ',ft.ss.pqCount,' / ',ft.ss.pvCount,' / ',ft.ss.refCount,' / ',length(ft.ss.bus.id));
-			fprintf(file_t, '%s%d%s%d%s%d\n','支路数       普通线路 / 变压器 / 合计      ',ft.ss.lineCount,' / ',ft.ss.transformerCount,' / ',length(ft.ss.branche.id));
-			fprintf(file_t, '%s%d%s%d%s%d\n','发电机数       调压厂 / 调频厂 / 合计      ',ft.ss.pvGens,' / ',ft.ss.refGens,' / ',ft.ss.pvGens+ft.ss.refGens);
-			fprintf(file_t, '%s%d\n','负荷数                                  ',ft.ss.loadCount);
+			fprintf(file_t, '\n%s%d%s%d%s%d%s%d\n','节点数       PQ / PV / 平衡 / 合计      ',ft.ss.n_pq,' / ',ft.ss.n_pv,' / ',ft.ss.n_slack,' / ',length(ft.ss.bus.id));
+			fprintf(file_t, '%s%d%s%d%s%d\n','支路数       普通线路 / 变压器 / 合计      ',ft.ss.n_line,' / ',ft.ss.n_trans,' / ',length(ft.ss.branch.id));
+			fprintf(file_t, '%s%d%s%d%s%d\n','发电机数       调压厂 / 调频厂 / 合计      ',ft.ss.pvGens,' / ',ft.ss.slackGens,' / ',ft.ss.pvGens+ft.ss.slackGens);
+			fprintf(file_t, '%s%d\n','负荷数                                  ',ft.ss.n_load);
 
 			if(result.status ~= 1)
 				return;
@@ -102,8 +102,8 @@ classdef Plain < handle
 			end
 			fprintf(file_t, '\n');
 
-			for k = 1:length(ft.branche.fid)
-				fprintf(file_t, '%2d %2d   %6.3f%s%6.3f   %6.3f%s%6.3f   %6.3f%s%6.3f\n', ft.branche.fid(k), ft.branche.tid(k), abs(ft.branche.Ia(k)), '∠', angle(ft.branche.Ia(k)).*180./pi, abs(ft.branche.Ib(k)), '∠', angle(ft.branche.Ib(k)).*180./pi, abs(ft.branche.Ic(k)), '∠', angle(ft.branche.Ic(k)).*180./pi);
+			for k = 1:length(ft.branch.fid)
+				fprintf(file_t, '%2d %2d   %6.3f%s%6.3f   %6.3f%s%6.3f   %6.3f%s%6.3f\n', ft.branch.fid(k), ft.branch.tid(k), abs(ft.branch.Ia(k)), '∠', angle(ft.branch.Ia(k)).*180./pi, abs(ft.branch.Ib(k)), '∠', angle(ft.branch.Ib(k)).*180./pi, abs(ft.branch.Ic(k)), '∠', angle(ft.branch.Ic(k)).*180./pi);
 			end
 			fprintf(file_t, '\n');
 

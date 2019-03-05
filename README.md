@@ -3,8 +3,7 @@
 
 ### 1. 安装
 
-将下面两个路径(本工程下)添加至 MATLAB 的环境变量中并重启即可, 
-可参考 matpower 的安装方式
+将下面两个路径(本工程下)添加至 MATLAB 的环境变量中并重启即可, 可参考 matpower 的安装方式
 
 > ./libs  
 > ./framework/functions
@@ -13,12 +12,12 @@
 
 ##### 普通潮流:
 
-目前的启动方式有(0-1 启动与直流潮流启动), 算法有牛顿-拉夫逊法与 PQ 分解法(FD, FDBX, FDXB)
+目前的启动方式有 0-1 启动与直流潮流启动, 算法有牛顿-拉夫逊法与 PQ 分解法(FD, FDBX, FDXB)
 
 ``` matlab
 % 创建稳态分析实例
 ss = Model.SteadyState();
-ss.init(getMpcSteady('bus4'));
+ss.init('case9');
 
 % 设置求解器的基本信息
 solver.method = 'NR';   % NR, FD, FDBX, FDXB
@@ -28,6 +27,11 @@ solver.start = 'flat';  % flat, dc
 
 % 计算潮流, 完成后可直接查看 ss 变量的字段
 res = ss.solvePowerFlow(solver);
+
+% 打印报告
+viewModel = View.Plain();
+config.documentName = ['report_steady_', 'case9', '.txt'];
+viewModel.getPowerFlowReport(ss, config, res);
 ```
 
 ##### 最优潮流：
@@ -64,7 +68,6 @@ hvdc.init(dcm_com());
 
 % 两个换流站分别加交流电压
 hvdc.render(1.032, 1.061);
-fprintf(hvdc.toString());
 
 % 运行完成后可调用 hvdc.toString() 并打印获取结果
 ```
@@ -92,4 +95,23 @@ solver.epsilon = 1e-6;
 
 % 计算潮流, 完成后可直接查看 ss 变量的字段, 直流输电系统的参数保存在 ss.hvdc 中
 ss.solvePowerFlow(solver);
+```
+
+##### 稳态故障分析
+
+在确保有稳态数据文件的前提下, 在 `./framework/functions` 目录下添加故障分析数据文件(xxx_ft.m).  
+目前支持单点故障(单相短路, 两相短路, 两相短路接地 三相短路接地)计算, 支持自定义故障相, 故障阻抗, 变压器接线, 变压器接地阻抗, 发电机接线, 发电机正负序与接地阻抗等.
+
+```matlab
+% 创建故障分析模型
+ft = Model.Fault();
+ft.init(getMpcFault('case9'));
+
+% 求解
+res = ft.solveFault([], getMpcSteady('case9'));
+
+% 打印报告
+viewModel = View.Plain();
+config.documentName = ['report_fault_', 'case9', '.txt'];
+viewModel.getFaultReport(ft, config, res);
 ```

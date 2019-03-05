@@ -368,8 +368,8 @@ classdef Fault < handle
 			self.ss.init(mpcSteady);
 
 			%% 设置求解器的基本信息
-			solver.method = 'FDBX';	% 求解方法
-			solver.maxIteration = 50;	% 最大迭代
+			solver.method = 'NR';	% 求解方法
+			solver.n_iters_max = 50;	% 最大迭代
 			solver.epsilon = 1e-5;	% 收敛判据, 功率不平衡量标幺
 			solver.start = 'flat';	% 启动方式
 

@@ -211,9 +211,8 @@ classdef SteadyState < handle
 
         %% init: 电力系统稳态模型初始化
         function init(self, mpc)
-
-            if ~isstruct(mpc) && regexp(mpc, '^\w+$')
-                eval(['mpc = ', mpc, '();']);
+            if ~isstruct(mpc)
+                mpc = getMpcSteady(mpc);
             end
 
             mpc.bus = sortrows(mpc.bus);
@@ -781,6 +780,7 @@ classdef SteadyState < handle
                 % 判收敛以及是否迭代次数上限, 返回一个状态码, 得到非零值直接返回
                 result.status = self.checkConverged(solver, result.it);
                 if(result.status ~= 0)  % result.status 非 0 表示收敛或错误
+                    result.method = solver.method;
                     return;
                 end
 
@@ -820,6 +820,7 @@ classdef SteadyState < handle
                 % 判收敛以及是否迭代次数上限, 返回一个状态码, 得到非零值直接返回
                 result.status = self.checkConverged(solver, result.it);
                 if(result.status ~= 0)  % result.status 非 0 表示收敛或错误
+                    result.method = solver.method;
                     return;
                 end
 
