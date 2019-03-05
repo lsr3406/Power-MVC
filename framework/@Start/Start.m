@@ -11,9 +11,7 @@ classdef Start < handle
 
 		%% Start: 入口构造器
 		function [self] = Start()
-			addpath('./framework/functions');
-			% 这里暂且将控制器和方法全部引入
-			addpath('./libs');
+			% do nothing
 		end
 
 		%% controllerInit: 初始化控制器
@@ -21,13 +19,18 @@ classdef Start < handle
 			self.controller = controller;
 		end
 
-		%% methodInit: 初始化控制器
+		%% methodInit: 初始化方法
 		function methodInit(self, method)
 			self.method = method;
 		end
+	end
 
+	methods (Static)
 		%% run: 入口方法
-		function run(self, config)
+		function run(config)
+
+			addpath('./framework/functions');
+			addpath('./libs');
 
 			self.config = config;
 			self.controller = config.controller;
@@ -36,6 +39,5 @@ classdef Start < handle
 			eval(['obj = Controller.', self.controller, '();']);
 			eval(['obj.', self.method, '();']);
 		end
-
 	end
 end
