@@ -129,7 +129,6 @@ classdef Approximator < handle
 			res = e(1, objIndex);
 		end
 
-
 		%% rho: rho 法
 		%  @param  c      已知的幂级数系数, [c0, c1, ...]
 		%  @return res    遍历所有偶数列, 将自变量 1 带入计算得到的结果
@@ -145,6 +144,16 @@ classdef Approximator < handle
 
 			objIndex = 2:2:length(c + 1);
 			res = e(1, objIndex);
+		end
+
+		%% delta2: Δ2 法
+		%  @param  c      已知的幂级数系数, [c0, c1, ...]
+		%  @return res    将自变量 1 带入计算得到的结果, 为索引方便, 长度与 c 一致
+		function [res] = delta2(self, c)
+			res = zeros(1, length(c));
+			res(3:end) = cumsum(c(1:end-2));
+			fracs = c(1:end-1).^2 ./ (c(2:end) - c(1:end-1));
+			res(2:end) = res(2:end) - fracs;
 		end
 	end
 end
