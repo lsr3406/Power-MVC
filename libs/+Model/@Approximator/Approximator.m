@@ -7,17 +7,21 @@ classdef Approximator < handle
 
 	methods
 
-		%% pade: pade 近似
+		%% pade: pade 逼近
+		%  @param  c    已知的幂级数系数, [c0, c1, ...]
+		%  @param  l    待计算的分子多项式的项数
+		%  @param  m    待计算的分母多项式的项数
+		%  @return num  分子多项式的系数, [a0, a1, ...]
+		%  @return den  分母多项式的系数, [b0, b1, ...]
 		function [num, den] = pade(self, c, l, m)
 			% 校验参数的合法性
 			l = floor(l);
 			m = floor(m);
-			assert(length(c) >= l+m+1 && l <= m);
+			assert(length(c) >= l+m+1 && l-1 <= m);
 
 			% 初始化
 			den = zeros(m+1, 1);	% b0~bm
 			den(1) = 1;
-			% num = zeros(l+1, 1);	% a0~al
 
 			% 计算分母 b
 			C = zeros(m, m);	% 初始化系数矩阵 C 与索引
@@ -32,7 +36,10 @@ classdef Approximator < handle
 			num = num(1:l+1);
 		end
 
-		%% viskovatov: viskovatov 近似
+		%% viskovatov: viskovatov 逼近
+		%  @param  c      已知的幂级数系数, 共 l+m 项 [c0, c1, ...]
+		%  @param  order  从 c 中取到前几阶, 范围 [0, length(c) - 1]
+		%  @return res    将自变量 1 带入计算得到的结果
 		function [res] = viskovatov(self, c, order)
 			if nargin == 2 || nargin == 3 && order > length(c) - 1
 				order = length(c) - 1;
@@ -47,7 +54,6 @@ classdef Approximator < handle
 			for k = 1:(order)
 				res((k+1):end) = getReciprocal(res((k+1):(order+1)));
 			end
-
 			res = self.cumdivsum(res);
 
 			%% getReciprocal: 计算多项式的倒数
@@ -65,7 +71,6 @@ classdef Approximator < handle
 					r(l) = -sum(r((l-1):-1:1).*coe(2:l))/coe(1);
 				end
 			end
-
 		end
 
 		%% divsum: 用于 viskovatov 系数求和
@@ -85,7 +90,9 @@ classdef Approximator < handle
 			end
 		end
 
-		%% epsilon: epsilon 方法
+		%% epsilon: epsilon 法
+		%  @param  c      已知的幂级数系数, [c0, c1, ...]
+		%  @return res    将自变量 1 带入计算得到的结果
 		function [res] = epsilon(self, c)
 			e = zeros(length(c) + 1);
 			e(1:end-1, 2) = cumsum(c)';
