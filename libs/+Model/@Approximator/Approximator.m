@@ -155,5 +155,38 @@ classdef Approximator < handle
 			fracs = c(1:end-1).^2 ./ (c(2:end) - c(1:end-1));
 			res(2:end) = res(2:end) - fracs;
 		end
+
+		%% euler: 欧拉法
+		%  @param  c      已知的幂级数系数, [c0, c1, ...]
+		%  @return res    将自变量 1 带入计算得到的结果, 为索引方便, 长度与 c 一致
+		function [res] = euler(self, c)
+			% e 是一个下三角矩阵
+			e = zeros(length(c));
+			e(:, 1) = c';
+
+			for k = 2:length(c)
+				e(k:end, k) = e(k:end, k-1) - e(k-1:end-1, k-1);
+			end
+			res = diag(e);
+		end
+
+		%% wijngaarden: Wijngaarden 法
+		%  @param  c      已知的幂级数系数, [c0, c1, ...]
+		%  @return res    将自变量 1 带入计算得到的结果, 为索引方便, 长度与 c 一致
+		function [res] = wijngaarden(self, c)
+
+			n_cols = round(length(c/3));
+			e = zeros(length(c), n_cols);
+			e(:, 1) = c';
+
+			for k = 2:n_cols
+				e(3.*k-4:end, k) = e(3.*k-4:end, k-1) - e(3.*k-5:end-1, k-1);
+			end
+
+			index_row = 1:length(c);
+			index_col = round(index_row / 3);
+			index = sub2ind(size(e), index_row, index_col);
+			res = c(index);
+		end
 	end
 end
