@@ -39,7 +39,7 @@ classdef Approximator < handle
 		%% viskovatov: viskovatov 逼近
 		%  @param  c      已知的幂级数系数, 共 l+m 项 [c0, c1, ...]
 		%  @param  order  从 c 中取到前几阶, 范围 [0, length(c) - 1]
-		%  @return res    将自变量 1 带入计算得到的结果
+		%  @return res    遍历所有阶, 代入自变量为 1 的结果
 		function [res] = viskovatov(self, c, order)
 			if nargin == 2 || nargin == 3 && order > length(c) - 1
 				order = length(c) - 1;
@@ -49,7 +49,7 @@ classdef Approximator < handle
 			assert(order < length(c));
 
 			c = c(1:(order+1));
-			res = zeros(1, order+1);
+			% res = zeros(1, order+1);
 			res = c;
 			for k = 1:(order)
 				res((k+1):end) = getReciprocal(res((k+1):(order+1)));
@@ -64,11 +64,11 @@ classdef Approximator < handle
 				if length(coe) <= 0
 					return;
 				end
-				
+
 				r = zeros(size(coe));
 				r(1) = 1./coe(1);
 				for l = 2:length(r)
-					r(l) = -sum(r((l-1):-1:1).*coe(2:l))/coe(1);
+					r(l) = -sum(r((l-1):-1:1).*coe(2:l))./coe(1);
 				end
 			end
 		end
@@ -92,7 +92,7 @@ classdef Approximator < handle
 
 		%% epsilon: epsilon 法
 		%  @param  c      已知的幂级数系数, [c0, c1, ...]
-		%  @return res    将自变量 1 带入计算得到的结果
+		%  @return res    遍历所有偶数列, 将自变量 1 带入计算得到的结果
 		function [res] = epsilon(self, c)
 			e = zeros(length(c) + 1);
 			e(1:end-1, 2) = cumsum(c)';
@@ -107,6 +107,27 @@ classdef Approximator < handle
 			res = e(1, objIndex);
 		end
 
-	end
+		%% eta: eta 法
+		%  @param  c      已知的幂级数系数, [c0, c1, ...]
+		%  @return res    遍历所有偶数列, 将自变量 1 带入计算得到的结果
+		function [res] = eta(self, c)
+			e = inf(length(c) + 1);
+			e(1:end-1, 2) = c';
+			index = 1:(length(c)-2);
 
+			for k = 3:(length(c) + 1)
+				if mod(k, 2) == 1
+					temp = 1./e(index+1, k-2) + 1./e(index+1, k-1) - 1./e(index, k-1);
+					e(index, k) = 1 ./ (temp);
+				else
+					e(index, k) = e(index+1, k-2) + e(index+1, k-1) - e(index, k-1);
+					
+				index = index(1:(end-1));
+			end
+
+			objIndex = 2:2:length(c + 1);
+			res = e(1, objIndex);
+		end
+
+	end
 end
