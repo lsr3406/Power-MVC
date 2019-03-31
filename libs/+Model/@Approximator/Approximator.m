@@ -129,5 +129,22 @@ classdef Approximator < handle
 			res = e(1, objIndex);
 		end
 
+
+		%% rho: rho 法
+		%  @param  c      已知的幂级数系数, [c0, c1, ...]
+		%  @return res    遍历所有偶数列, 将自变量 1 带入计算得到的结果
+		function [res] = rho(self, c)
+			e = zeros(length(c) + 1);
+			e(1:end-1, 2) = cumsum(c)';
+			index = 1:(length(c)-2);
+
+			for k = 3:(length(c) + 1)
+				e(index, k) = e(index+1, k-2) + (k-1)./(e(index+1, k-1) - e(index, k-1));
+				index = index(1:(end-1));
+			end
+
+			objIndex = 2:2:length(c + 1);
+			res = e(1, objIndex);
+		end
 	end
 end
