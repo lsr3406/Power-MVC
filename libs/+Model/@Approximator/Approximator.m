@@ -9,8 +9,8 @@ classdef Approximator < handle
 
 		%% pade: pade 逼近
 		%  @param  c    已知的幂级数系数, [c0, c1, ...]
-		%  @param  l    待计算的分子多项式的项数
-		%  @param  m    待计算的分母多项式的项数
+		%  @param  l    待计算的分子多项式的最大次数
+		%  @param  m    待计算的分母多项式的最大次数
 		%  @return num  分子多项式的系数, [a0, a1, ...]
 		%  @return den  分母多项式的系数, [b0, b1, ...]
 		function [num, den] = pade(self, c, l, m)
@@ -37,7 +37,7 @@ classdef Approximator < handle
 		end
 
 		%% viskovatov: viskovatov 逼近
-		%  @param  c      已知的幂级数系数, 共 l+m 项 [c0, c1, ...]
+		%  @param  c      已知的幂级数系数 [c0, c1, ...]
 		%  @param  order  从 c 中取到前几阶, 范围 [0, length(c) - 1]
 		%  @return res    遍历所有阶, 代入自变量为 1 的结果
 		function [res] = viskovatov(self, c, order)
@@ -52,8 +52,9 @@ classdef Approximator < handle
 			% res = zeros(1, order+1);
 			res = c;
 			for k = 1:(order)
-				res((k+1):end) = getReciprocal(res((k+1):(order+1)));
+				res((k+1):end) = getReciprocal(res((k+1):end));
 			end
+
 			res = self.cumdivsum(res);
 
 			%% getReciprocal: 计算多项式的倒数
@@ -121,12 +122,10 @@ classdef Approximator < handle
 					e(index, k) = 1 ./ (temp);
 				else
 					e(index, k) = e(index+1, k-2) + e(index+1, k-1) - e(index, k-1);
-					
+				end
 				index = index(1:(end-1));
 			end
-
-			objIndex = 2:2:length(c + 1);
-			res = e(1, objIndex);
+			res = cumsum(e(1, 2:end-1));
 		end
 
 		%% rho: rho 法
@@ -148,12 +147,12 @@ classdef Approximator < handle
 
 		%% delta2: Δ2 法
 		%  @param  c      已知的幂级数系数, [c0, c1, ...]
-		%  @return res    将自变量 1 带入计算得到的结果, 为索引方便, 长度与 c 一致
+		%  @return res    将自变量 1 带入计算得到的结果
 		function [res] = delta2(self, c)
-			res = zeros(1, length(c));
-			res(3:end) = cumsum(c(1:end-2));
+			res = zeros(1, length(c)-1);
+			res(2:end) = cumsum(c(1:end-2));
 			fracs = c(1:end-1).^2 ./ (c(2:end) - c(1:end-1));
-			res(2:end) = res(2:end) - fracs;
+			res = res - fracs;
 		end
 
 		%% euler: 欧拉法
@@ -162,12 +161,12 @@ classdef Approximator < handle
 		function [res] = euler(self, c)
 			% e 是一个下三角矩阵
 			e = zeros(length(c));
-			e(:, 1) = c';
+			e(:, 1) = cumsum(c)';
 
 			for k = 2:length(c)
-				e(k:end, k) = e(k:end, k-1) - e(k-1:end-1, k-1);
+				e(k:end, k) = (e(k:end, k-1) + e(k-1:end-1, k-1)) ./ 2;
 			end
-			res = diag(e);
+			res = diag(e)';
 		end
 
 		%% wijngaarden: Wijngaarden 法
@@ -177,16 +176,16 @@ classdef Approximator < handle
 
 			n_cols = ceil(length(c) .* 2 ./ 3);
 			e = zeros(length(c), n_cols);
-			e(:, 1) = c';
+			e(:, 1) = cumsum(c)';
 
 			for k = 2:n_cols
-				e(ceil(1.5.*c-1):end, k) = e(ceil(1.5.*c-1):end, k-1) - e(ceil(1.5.*c-2):end-1, k-1);
+				e(ceil(1.5.*c-1):end, k) = (e(ceil(1.5.*c-1):end, k-1) + e(ceil(1.5.*c-2):end-1, k-1)) ./ 2;
 			end
 
 			index_row = 1:length(c);
 			index_col = ceil(index_row .* 2 ./ 3);
 			index = sub2ind(size(e), index_row, index_col);
-			res = c(index);
+			res = e(index);
 		end
 	end
 end
