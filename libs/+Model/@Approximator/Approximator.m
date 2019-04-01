@@ -97,7 +97,7 @@ classdef Approximator < handle
 		function [res] = epsilon(self, c)
 			e = zeros(length(c) + 1);
 			e(1:end-1, 2) = cumsum(c)';
-			index = 1:(length(c)-2);
+			index = 1:(length(c)-1);
 
 			for k = 3:(length(c) + 1)
 				e(index, k) = e(index+1, k-2) + 1./(e(index+1, k-1) - e(index, k-1));
@@ -114,7 +114,7 @@ classdef Approximator < handle
 		function [res] = eta(self, c)
 			e = inf(length(c) + 1);
 			e(1:end-1, 2) = c';
-			index = 1:(length(c)-2);
+			index = 1:(length(c)-1);
 
 			for k = 3:(length(c) + 1)
 				if mod(k, 2) == 1
@@ -125,7 +125,7 @@ classdef Approximator < handle
 				end
 				index = index(1:(end-1));
 			end
-			res = cumsum(e(1, 2:end-1));
+			res = cumsum(e(1, 2:end));
 		end
 
 		%% rho: rho 法
@@ -134,7 +134,7 @@ classdef Approximator < handle
 		function [res] = rho(self, c)
 			e = zeros(length(c) + 1);
 			e(1:end-1, 2) = cumsum(c)';
-			index = 1:(length(c)-2);
+			index = 1:(length(c)-1);
 
 			for k = 3:(length(c) + 1)
 				e(index, k) = e(index+1, k-2) + (k-1)./(e(index+1, k-1) - e(index, k-1));
@@ -179,7 +179,7 @@ classdef Approximator < handle
 			e(:, 1) = cumsum(c)';
 
 			for k = 2:n_cols
-				e(ceil(1.5.*c-1):end, k) = (e(ceil(1.5.*c-1):end, k-1) + e(ceil(1.5.*c-2):end-1, k-1)) ./ 2;
+				e(ceil(1.5.*k-1):end, k) = (e(ceil(1.5.*k-1):end, k-1) + e(ceil(1.5.*k-2):end-1, k-1)) ./ 2;
 			end
 
 			index_row = 1:length(c);
@@ -187,5 +187,26 @@ classdef Approximator < handle
 			index = sub2ind(size(e), index_row, index_col);
 			res = e(index);
 		end
+
+        %% theta: theta 法
+        %  @param  c      已知的幂级数系数, [c0, c1, ...]
+        %  @return res    遍历所有偶数列, 将自变量 1 带入计算得到的结果
+        function [res] = theta(self, c)
+            n_cols = 2.*ceil(length(c) ./ 3);
+            e = zeros(length(c)+1, n_cols);
+            e(1:end-1, 2) = cumsum(c)';
+            index = 1:(length(c)-1);
+
+            for k = 3:(n_cols)
+                if mod(k, 2) == 1
+                    e(index, k) = e(index+1, k-2) + 1./(e(index+1, k-1) - e(index, k-1));
+                    index = index(1:(end-2));
+                else
+                    e(index, k) = e(index+1, k-2) +  (e(index+2, k-2) - e(index+1, k-2)) .* (e(index+2, k-1) - e(index+1, k-1)) ./ (e(index+2, k-1) - 2 .* e(index+1, k-1) + e(index, k-1));
+                    index = index(1:(end-1));
+                end
+            end
+            res = e(1, 2:2:end);
+        end
 	end
 end
