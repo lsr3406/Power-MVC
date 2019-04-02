@@ -14,10 +14,15 @@ classdef Approximator < handle
 		%  @return num  分子多项式的系数, [a0, a1, ...]
 		%  @return den  分母多项式的系数, [b0, b1, ...]
 		function [num, den] = pade(self, c, l, m)
-			% 校验参数的合法性
-			l = floor(l);
-			m = floor(m);
-			assert(length(c) >= l+m+1 && l-1 <= m);
+			if nargin == 2
+				l = ceil(length(c) / 2)-1;
+				m = floor(length(c) / 2);
+			else
+				% 校验参数的合法性
+				l = floor(l);
+				m = floor(m);
+				assert(length(c) >= l+m+1 && l-1 <= m);
+			end
 
 			% 初始化
 			den = zeros(m+1, 1);	% b0~bm
@@ -28,7 +33,7 @@ classdef Approximator < handle
 			Index = 1:m*m;
 			index = floor((Index-1)/m) + mod((Index-1), m)+1;	% 
 			C(Index) = c(l-m+1+index);
-			den(m+1:-1:2) = -(C \ c((l+2):(l+m+1))');
+			den(m+1:-1:2) = -((C+eps) \ c((l+2):(l+m+1))');
 			den = den';
 
 			% 计算分子 a
@@ -67,9 +72,9 @@ classdef Approximator < handle
 				end
 
 				r = zeros(size(coe));
-				r(1) = 1./coe(1);
+				r(1) = 1./(coe(1)+eps);
 				for l = 2:length(r)
-					r(l) = -sum(r((l-1):-1:1).*coe(2:l))./coe(1);
+					r(l) = -sum(r((l-1):-1:1).*coe(2:l))./(coe(1)+eps);
 				end
 			end
 		end
@@ -79,7 +84,7 @@ classdef Approximator < handle
 			if length(c) == 1
 				res = c;
 			else
-				res = c(1) + 1./self.divsum(c(2:end));
+				res = c(1) + 1./(self.divsum(c(2:end))+eps);
 			end
 		end
 
@@ -100,7 +105,7 @@ classdef Approximator < handle
 			index = 1:(length(c)-1);
 
 			for k = 3:(length(c) + 1)
-				e(index, k) = e(index+1, k-2) + 1./(e(index+1, k-1) - e(index, k-1));
+				e(index, k) = e(index+1, k-2) + 1./(e(index+1, k-1) - e(index, k-1)+eps);
 				index = index(1:(end-1));
 			end
 
@@ -118,8 +123,8 @@ classdef Approximator < handle
 
 			for k = 3:(length(c) + 1)
 				if mod(k, 2) == 1
-					temp = 1./e(index+1, k-2) + 1./e(index+1, k-1) - 1./e(index, k-1);
-					e(index, k) = 1 ./ (temp);
+					temp = 1./(e(index+1, k-2)+eps) + 1./(e(index+1, k-1)+eps) - 1./(e(index, k-1)+eps);
+					e(index, k) = 1 ./ (temp+eps);
 				else
 					e(index, k) = e(index+1, k-2) + e(index+1, k-1) - e(index, k-1);
 				end
@@ -137,7 +142,7 @@ classdef Approximator < handle
 			index = 1:(length(c)-1);
 
 			for k = 3:(length(c) + 1)
-				e(index, k) = e(index+1, k-2) + (k-1)./(e(index+1, k-1) - e(index, k-1));
+				e(index, k) = e(index+1, k-2) + (k-1)./(e(index+1, k-1) - e(index, k-1)+eps);
 				index = index(1:(end-1));
 			end
 
@@ -151,7 +156,7 @@ classdef Approximator < handle
 		function [res] = delta2(self, c)
 			res = zeros(1, length(c)-1);
 			res(2:end) = cumsum(c(1:end-2));
-			fracs = c(1:end-1).^2 ./ (c(2:end) - c(1:end-1));
+			fracs = c(1:end-1).^2 ./ (c(2:end) - c(1:end-1)+eps);
 			res = res - fracs;
 		end
 
@@ -199,10 +204,10 @@ classdef Approximator < handle
 
             for k = 3:(n_cols)
                 if mod(k, 2) == 1
-                    e(index, k) = e(index+1, k-2) + 1./(e(index+1, k-1) - e(index, k-1));
+                    e(index, k) = e(index+1, k-2) + 1./(e(index+1, k-1) - e(index, k-1)+eps);
                     index = index(1:(end-2));
                 else
-                    e(index, k) = e(index+1, k-2) +  (e(index+2, k-2) - e(index+1, k-2)) .* (e(index+2, k-1) - e(index+1, k-1)) ./ (e(index+2, k-1) - 2 .* e(index+1, k-1) + e(index, k-1));
+                    e(index, k) = e(index+1, k-2) +  (e(index+2, k-2) - e(index+1, k-2)) .* (e(index+2, k-1) - e(index+1, k-1)) ./ (e(index+2, k-1) - 2 .* e(index+1, k-1) + e(index, k-1)+eps);
                     index = index(1:(end-1));
                 end
             end
