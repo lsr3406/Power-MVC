@@ -26,18 +26,18 @@ classdef SteadyState < handle
         function testPF(self)
 
             ss = Model.SteadyState();
-            ss.init(getMpcSteady('bus4'));
+            ss.init(getMpcSteady('case118'));
 
             solver.method = 'NR';
-            solver.n_iters_max = 10;
-            solver.epsilon = 1e-5;
-            solver.start = '';
+            solver.n_iters_max = 50;
+            solver.epsilon = 1e-6;
+            solver.start = 'flat';
 
             res = ss.solvePowerFlow(solver);
 
-            disp([real(ss.bus.mag.*exp(ss.bus.ang.*1i)), imag(ss.bus.mag.*exp(ss.bus.ang.*1i)), ss.bus.Pg, ss.bus.Qg, ss.bus.Pd, ss.bus.Qd]);
-            disp([ss.branch.fid, ss.branch.tid, ss.branch.Pij*100, ss.branch.Qij*100, ss.branch.Pji*100, ss.branch.Qji*100, ss.branch.dP*100, ss.branch.dQ*100]);
-
+            % disp([real(ss.bus.mag.*exp(ss.bus.ang.*1i)), imag(ss.bus.mag.*exp(ss.bus.ang.*1i)), ss.bus.Pg, ss.bus.Qg, ss.bus.Pd, ss.bus.Qd]);
+            % disp([ss.branch.fid, ss.branch.tid, ss.branch.Pij*100, ss.branch.Qij*100, ss.branch.Pji*100, ss.branch.Qji*100, ss.branch.dP*100, ss.branch.dQ*100]);
+            save('testPF.mat')
         end
 
         %% testIEEE: ieee 算例总结
