@@ -15,7 +15,7 @@ classdef TransientState < handle
 
 			solver.dae = 'euler';	% 改进的欧拉法
 			solver.net = 'default';		% 迭代法
-			solver.dt = 0.001;	% 步长
+			solver.dt = 0.0005;	% 步长
 			solver.time = 2;
 
 			ts.solveLargeDisturbance(solver, getMpcSteady(obj), getMpcFault(obj));

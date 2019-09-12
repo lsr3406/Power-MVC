@@ -87,8 +87,13 @@ classdef TransientState < handle
 			self.itlog.bxgy = [];
 
 			% 线路和节点的暂态参数列表
-			self.bus.id = [];
-			self.bus.trY = [];
+			self.bus.id = [];  % 节点编号
+			self.bus.trY = [];  % 节点故障带来的过渡导纳
+			if isfield(mpc, 'bus') && isfield(mpc.bus, 'Pd')
+				self.bus.Pd = mpc.bus.Pd;  % 暂态过程中要考虑的节点恒功率负荷实部
+				self.bus.Qd = mpc.bus.Pd;  % 暂态过程中要考虑的节点恒功率负荷虚部
+				self.bus.LM = self.get2n2LoadMatrix();
+			end
 			self.branch.fid = [];
 			self.branch.tid = [];
 			self.branch.status = [];	% 0 断开, 1 闭合
@@ -420,7 +425,7 @@ classdef TransientState < handle
 		end
 
 		%% getBlockForNAM: 向节点导纳矩阵实矩阵中叠加一个分块
-		function [blk] =  getBlockForNAM(self, pos, param_GB)
+		function [blk] = getBlockForNAM(self, pos, param_GB)
 			odd = 2.*pos - 1;
 			even = 2.*pos;
 			blk = sparse(2.*length(self.ss.bus.id), 2.*length(self.ss.bus.id));
@@ -431,7 +436,12 @@ classdef TransientState < handle
 		end
 
 		%% solveNetEquation: 求解网络方程
-		function [Uxy, Ixy] = solveNetEquation(self, net, delta)
+		function [Uxy, Ixy] = solveNetEquation(self, delta)
+
+			% debug
+			[Uxy, Ixy] = self.solveNetEquationByHE(delta);
+			return ;
+
 			index = getIndex(self.ss.bus.id, self.gen.nid);
 			n = self.NAM.size();
 			odd = (2.*(1:n) - 1)';
@@ -439,7 +449,7 @@ classdef TransientState < handle
 			param_GB = self.param_GB(delta);
 
 			% 计算暂态电动势与注入电流
-			I = zeros(2.*n);
+			I = zeros(2.*n(1), 1);
 			
 			% 二阶经典
 			% Exy = (self.gen.Ed1 + self.gen.Eq1.*1i).*exp(-(pi./2 - delta).*1i);
@@ -469,14 +479,14 @@ classdef TransientState < handle
 			index = getIndex(self.ss.bus.id, self.gen.nid);
 			switch dae
 				case {'euler', 'Euler'}
-					% [Uxy, Ixy] = self.solveNetEquation(net, self.gen.delta);
+					% [Uxy, Ixy] = self.solveNetEquation(self.gen.delta);
 					[omega1, delta1] = self.stepForward(self.gen.Uxy, self.gen.Ixy);
-					[Uxy, Ixy] = self.solveNetEquation(net, self.gen.delta + delta1.*self.dt);
+					[Uxy, Ixy] = self.solveNetEquation(self.gen.delta + delta1.*self.dt);
 					[omega2, delta2] = self.stepForward(Uxy(index), Ixy(index));
 
 					self.gen.omega = self.gen.omega + (omega1 + omega2)./2.*self.dt;
 					self.gen.delta = self.gen.delta + (delta1 + delta2)./2.*self.dt;
-					[Uxy, Ixy] = self.solveNetEquation(net, self.gen.delta);
+					[Uxy, Ixy] = self.solveNetEquation(self.gen.delta);
 					self.gen.Uxy = Uxy(index);
 					self.gen.Ixy = Ixy(index);
 				otherwise
@@ -503,7 +513,7 @@ classdef TransientState < handle
 				self.setTransientNAM();
 				self.NAM.setReal();	% 不用直接法求网络方程可以去掉
 				% 求解网络方程
-				[Uxy, Ixy] = self.solveNetEquation(solver.net, self.gen.delta);
+				[Uxy, Ixy] = self.solveNetEquation(self.gen.delta);
 				self.gen.Uxy = Uxy(getIndex(self.ss.bus.id, self.gen.nid));
 				self.gen.Ixy = Ixy(getIndex(self.ss.bus.id, self.gen.nid));
 			end

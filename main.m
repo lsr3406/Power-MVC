@@ -1,7 +1,7 @@
 % encoding: utf-8
 % @author: lsr3406
 % @create on: 2018-01-19 11:03:57
-% @update on: 2019-03-05 14:34:43
+% @update on: 2019-06-11 14:42:28
 
 % matlab 初始化
 clear all;		% 清除变量
@@ -10,6 +10,8 @@ close all;		% 关闭窗口
 % 初始化常量, 配置文件等
 config = conf();
 addpath('./framework');
+addpath('./framework/functions/');
+addpath('./libs');
 
 % 入口
 Start.run(config);

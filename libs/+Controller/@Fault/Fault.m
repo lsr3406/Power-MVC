@@ -57,12 +57,12 @@ classdef Fault < handle
 			self.drawNetStatus(ft.bus);
 			self.strokeFaultStatus(ft);
 
-			viewModel = View.Plain();
-			config.documentName = ['report_fault_', obj, '.txt'];
-			viewModel.getFaultReport(ft, config, res);
+			% viewModel = View.Plain();
+			% config.documentName = ['report_fault_', obj, '.txt'];
+			% viewModel.getFaultReport(ft, config, res);
 
 			% debug
-			save('test');
+			% save('test');
 		end
 
 		%% test9_zn: 9 节点系统变压器接地阻抗变化测试
