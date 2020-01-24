@@ -71,10 +71,10 @@ function [mpc] = case39_ft()
 	};
 
 	mpc.fault = [];
-	mpc.fault.nid = 14;
-	mpc.fault.zf = 0.003 + 0.004i;
-	mpc.fault.zg = 0;
-	mpc.fault.type = 'f2';
-	mpc.fault.phase = 'ab';
+	mpc.fault.nid = 14;  % 故障节点 (目前不支持线路中间故障)
+	mpc.fault.zf = 0.003 + 0.004i;  % 过渡阻抗 zf (pu)
+	mpc.fault.zg = 0;  % 对地过渡阻抗 zg (pu), 仅两相短路接地时有效
+	mpc.fault.type = 'f2';  % 故障类型 (f3, f2, f1, f11)
+	mpc.fault.phase = 'ab';  % 故障相 (a, b, c, ab, ac 等)
 
 end

@@ -26,6 +26,7 @@ classdef Fault < handle
 		%% test39: 
 		function test39(self)
 
+			% 正常加载数据并计算
 			obj = 'case39';
 			ft = Model.Fault();
 			ft.init(getMpcFault(obj));
@@ -33,14 +34,17 @@ classdef Fault < handle
 			solver = [];
 			res = ft.solveFault(solver, getMpcSteady(obj));
 
-			self.drawNetStatus(ft.bus);
-			self.strokeFaultStatus(ft);
+			% 画向量图
+			self.drawNetStatus(ft.bus);  % 在复平面上画出各节点的电压
+			self.strokeFaultStatus(ft);  % 在复平面上画出故障点的电压电流及其三序分量
 
-			viewModel = View.Plain();
-			config.documentName = ['report_fault_', obj, '.txt'];
-			viewModel.getFaultReport(ft, config, res);
+			% 保存一个简单的故障计算报告
+			% viewModel = View.Plain();
+			% config.documentName = ['report_fault_', obj, '.txt'];
+			% viewModel.getFaultReport(ft, config, res);
 
-			% debug
+			% 由于函数运行结束后, 局部变量不能保存, 运行 save('xxx') 后可以保存成文件.
+			% 在外面可以手动调用 load('xxx') 加载重要的变量
 			save('test');
 		end
 
