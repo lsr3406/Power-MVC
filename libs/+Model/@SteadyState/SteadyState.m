@@ -1454,7 +1454,7 @@ classdef SteadyState < handle
         function setNewOpfParameters(self)
 
             self.opf.delta_x = self.opf.correction(end-self.opf.n_eq-self.opf.n_state+1:end-self.opf.n_eq);
-            self.opf.delta_y = self.opf.correction(4.*self.opf.n_ieq+1:4.*self.opf.n_ieq+self.opf.n_eq);
+            self.opf.delta_y = self.opf.correction(end-self.opf.n_eq+1:end);
 
             self.opf.x = self.opf.x + self.opf.alpha_p .* self.opf.delta_x;
             self.opf.y = self.opf.y + self.opf.alpha_d .* self.opf.delta_y;
